@@ -57,6 +57,12 @@ Then start the app:
 
 ### Windows (PowerShell)
 
+First, allow scripts to run (one-time setup):
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+Then:
 ```powershell
 git clone <your-repo-url> xrpl-monitor
 cd xrpl-monitor
