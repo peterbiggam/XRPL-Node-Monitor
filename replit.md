@@ -1,50 +1,75 @@
 # XRPL Node Monitor Dashboard
 
 ## Overview
-A cross-platform XRPL (XRP Ledger) node monitoring dashboard that provides real-time insights into node operations, network health, and system performance. Designed for node operators running on Docker (Windows) or native Linux installations.
+A cross-platform XRPL (XRP Ledger) node monitoring dashboard with a cyberpunk/sci-fi command center aesthetic. Provides real-time insights into node operations, network health, system performance, with persistent metrics history, alerting, AI analysis, and multi-node support.
 
 ## Architecture
 - **Frontend**: React + Vite with Tailwind CSS, Shadcn UI components, Recharts for data visualization
 - **Backend**: Express.js server with WebSocket proxy to XRPL node, systeminformation for system metrics
-- **Real-time**: Polling-based updates (3-5 second intervals) for live data
+- **Database**: PostgreSQL via @neondatabase/serverless + drizzle-orm for persistent storage
+- **Real-time**: Polling-based updates (3-5 second intervals) for live data, SSE for AI streaming
 
 ## Key Features
 - **Dashboard**: Overview of node status, latest ledger, network peers, and performance metrics
+- **Metrics History**: Time-series charts (1h/6h/24h/7d) for CPU, memory, peers, ledger close times, load factor with CSV/JSON export
+- **Alert Center**: Threshold-based alerting with configurable warning/critical levels, cooldown logic, acknowledge functionality, pulsing sidebar badge
+- **Network Explorer**: Transaction hash lookup, account info/balance, fee estimator
 - **Ledger Explorer**: Detailed ledger information, recent ledger list, close time chart
-- **Peers**: Connected peer table with masked IPs, direction badges, latency, and uptime
+- **Peers**: Connected peer table + force-directed network graph visualization with latency-based coloring
 - **Transactions**: Live transaction feed with type distribution pie chart
+- **Validators & Amendments**: Validator list, amendment status with progress tracking
+- **AI Analysis**: LM Studio integration with SSE streaming chat, context-aware prompts, conversation history
 - **System Health**: CPU/memory gauges, disk usage bars, network I/O chart, OS info
-- **Settings**: Configure node connection (host, WebSocket/HTTP/admin ports)
+- **Settings**: Node connection config, multi-node management (add/edit/delete/activate), LM Studio config
+- **Fullscreen Mode**: Browser Fullscreen API toggle for ops/wall-mounted displays
+- **Sound Effects**: Web Audio API synthesized sounds for alerts, connections, with toggle control
+
+## Database Tables
+- `metricsSnapshots` — time-series node metrics (30s intervals, 7-day retention)
+- `alerts` — triggered alert records with severity/acknowledgement
+- `alertThresholds` — configurable warning/critical thresholds per metric
+- `savedNodes` — multi-node configurations with active flag
+- `aiConversations` — persisted AI chat history
+- `aiConfig` — LM Studio connection settings
 
 ## Port Configuration
-Default XRPL node ports:
-- WebSocket: 6006
-- HTTP/JSON-RPC: 5005
-- Admin: 8080
-
-The backend tries configured port first, then falls back to 6006 → 5005 → 8080.
+Default XRPL node ports: WebSocket 6006, HTTP/JSON-RPC 5005, Admin 8080.
+Backend tries configured port first, then falls back to 6006 → 5005 → 8080.
+App runs on port 5000 (other ports firewalled).
 
 ## Project Structure
 ```
 client/src/
-  pages/          - Dashboard, Ledger, Peers, Transactions, SystemHealth, Settings
-  components/     - AppSidebar, MetricCard, CircularGauge, ResourceBar, SparklineChart, StatusIndicator, ThemeProvider, ThemeToggle
+  pages/          - Dashboard, History, Alerts, Explorer, Ledger, Peers, Transactions, Validators, AIAnalysis, SystemHealth, Settings
+  components/     - AppSidebar, MetricCard, CircularGauge, ResourceBar, SparklineChart, StatusIndicator, ThemeProvider, ThemeToggle, AnimatedBackground
   components/ui/  - Shadcn UI components
+  lib/            - queryClient, sounds
 server/
-  routes.ts       - API routes for XRPL proxy and system metrics
-  storage.ts      - In-memory storage for connection config
+  routes.ts       - API routes for XRPL proxy, metrics, alerts, nodes, AI, export
+  storage.ts      - DatabaseStorage class implementing IStorage interface
+  db.ts           - Drizzle ORM + Neon serverless PostgreSQL connection
 shared/
-  schema.ts       - TypeScript interfaces and Zod schemas
+  schema.ts       - Drizzle tables, insert schemas (drizzle-zod), TypeScript types
 ```
 
 ## API Endpoints
-- `GET /api/connection` - Current connection config
-- `POST /api/connection` - Update connection config
-- `GET /api/node/info` - XRPL server_info
-- `GET /api/node/ledger` - Latest validated ledger
-- `GET /api/node/peers` - Connected peers list
-- `GET /api/node/transactions` - Recent transactions
-- `GET /api/system/metrics` - System CPU, memory, disk, network stats
+- `GET/POST /api/connection` — Connection config
+- `GET /api/node/info|ledger|peers|transactions` — XRPL node data
+- `GET /api/node/tx/:hash` — Transaction lookup
+- `GET /api/node/account/:address` — Account info
+- `GET /api/node/fee` — Current fee levels
+- `GET /api/node/validators|amendments` — Validator/amendment data
+- `GET /api/system/metrics` — System CPU, memory, disk, network
+- `GET /api/metrics/history?hours=N` — Historical metrics snapshots
+- `GET /api/alerts` — Recent alerts
+- `GET/PUT /api/alerts/thresholds` — Alert threshold config
+- `POST /api/alerts/:id/acknowledge` — Acknowledge alert
+- `GET/POST/PUT/DELETE /api/nodes` — Multi-node CRUD
+- `POST /api/nodes/:id/activate` — Switch active node
+- `GET/POST /api/ai/config` — LM Studio settings
+- `POST /api/ai/analyze` — AI analysis with SSE streaming
+- `GET /api/ai/history` — Chat history
+- `GET /api/export/report?hours=N&format=csv|json` — Export reports
 
 ## Theme - Cyberpunk/Futuristic Command Center
 - Dark mode by default with light mode toggle
@@ -55,11 +80,11 @@ shared/
 - Canvas particle field animated background (animated-bg.tsx)
 - Framer-motion staggered entrance animations on all pages
 - HUD-style panels, hexagonal badge icons, glowing gauge components
-- "SIGNAL LOST" dramatic disconnected state with flickering text
-- Live clock in header, system status indicator in sidebar
 
 ## Dependencies
-- systeminformation - System hardware/OS metrics
-- ws - WebSocket client for XRPL node communication
-- recharts - Charts and data visualization
-- framer-motion - Page entrance animations and motion effects
+- systeminformation — System hardware/OS metrics
+- ws — WebSocket client for XRPL node communication
+- recharts — Charts and data visualization
+- framer-motion — Page entrance animations and motion effects
+- @neondatabase/serverless + drizzle-orm — PostgreSQL database
+- drizzle-zod — Schema validation

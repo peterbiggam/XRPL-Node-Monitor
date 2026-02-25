@@ -10,8 +10,10 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { AnimatedBackground } from "@/components/animated-bg";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
-import { Wifi, WifiOff } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Wifi, WifiOff, Volume2, VolumeX, Maximize, Minimize } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { playSound, isSoundEnabled, setSoundEnabled } from "@/lib/sounds";
 import NotFound from "@/pages/not-found";
 import SettingsPage from "@/pages/settings";
 import SystemHealthPage from "@/pages/system-health";
@@ -19,6 +21,11 @@ import DashboardPage from "@/pages/dashboard";
 import LedgerPage from "@/pages/ledger";
 import PeersPage from "@/pages/peers";
 import TransactionsPage from "@/pages/transactions";
+import AlertsPage from "@/pages/alerts";
+import AiAnalysisPage from "@/pages/ai-analysis";
+import ValidatorsPage from "@/pages/validators";
+import HistoryPage from "@/pages/history";
+import ExplorerPage from "@/pages/explorer";
 
 function LiveClock() {
   const [time, setTime] = useState(() => new Date());
@@ -45,6 +52,56 @@ function LiveClock() {
   );
 }
 
+function FullscreenToggle() {
+  const [isFs, setIsFs] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const toggle = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen();
+    }
+  };
+
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      onClick={toggle}
+      data-testid="button-fullscreen-toggle"
+    >
+      {isFs ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+    </Button>
+  );
+}
+
+function SoundToggle() {
+  const [enabled, setEnabled] = useState(() => isSoundEnabled());
+
+  const toggle = () => {
+    const next = !enabled;
+    setEnabled(next);
+    setSoundEnabled(next);
+  };
+
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      onClick={toggle}
+      data-testid="button-sound-toggle"
+    >
+      {enabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+    </Button>
+  );
+}
+
 function ConnectionStatus() {
   const { data, isError } = useQuery<{ status: string; data: unknown }>({
     queryKey: ["/api/node/info"],
@@ -52,6 +109,20 @@ function ConnectionStatus() {
   });
 
   const connected = !isError && data?.status === "connected";
+  const prevConnected = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    if (prevConnected.current === null) {
+      prevConnected.current = connected;
+      return;
+    }
+    if (prevConnected.current && !connected) {
+      playSound("connectionLost");
+    } else if (!prevConnected.current && connected) {
+      playSound("connectionRestored");
+    }
+    prevConnected.current = connected;
+  }, [connected]);
 
   return (
     <Badge
@@ -76,7 +147,12 @@ function Router() {
       <Route path="/ledger" component={LedgerPage} />
       <Route path="/peers" component={PeersPage} />
       <Route path="/transactions" component={TransactionsPage} />
+      <Route path="/alerts" component={AlertsPage} />
+      <Route path="/explorer" component={ExplorerPage} />
+      <Route path="/history" component={HistoryPage} />
+      <Route path="/validators" component={ValidatorsPage} />
       <Route path="/system" component={SystemHealthPage} />
+      <Route path="/ai" component={AiAnalysisPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
@@ -111,6 +187,8 @@ export default function App() {
                   <div className="flex items-center gap-3 flex-wrap">
                     <LiveClock />
                     <ConnectionStatus />
+                    <SoundToggle />
+                    <FullscreenToggle />
                     <ThemeToggle />
                   </div>
                 </header>

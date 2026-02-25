@@ -1,4 +1,7 @@
 import { Link, useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { SavedNode } from "@shared/schema";
 import {
   LayoutDashboard,
   BookOpen,
@@ -6,6 +9,14 @@ import {
   ArrowRightLeft,
   Activity,
   Settings,
+  ChevronDown,
+  Server,
+  Check,
+  Clock,
+  Bell,
+  Search,
+  Shield,
+  Brain,
 } from "lucide-react";
 import {
   Sidebar,
@@ -19,12 +30,28 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import type { Alert } from "@shared/schema";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Metrics History", url: "/history", icon: Clock },
+  { title: "Alert Center", url: "/alerts", icon: Bell },
+  { title: "Network Explorer", url: "/explorer", icon: Search },
   { title: "Ledger Explorer", url: "/ledger", icon: BookOpen },
   { title: "Peers", url: "/peers", icon: Users },
   { title: "Transactions", url: "/transactions", icon: ArrowRightLeft },
+  { title: "Validators", url: "/validators", icon: Shield },
+  { title: "AI Analysis", url: "/ai", icon: Brain },
   { title: "System Health", url: "/system", icon: Activity },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
@@ -57,8 +84,97 @@ function HexagonLogo() {
   );
 }
 
+function NodeSwitcher() {
+  const [, setLocation] = useLocation();
+
+  const { data: nodes } = useQuery<SavedNode[]>({
+    queryKey: ["/api/nodes"],
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/nodes/${id}/activate`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/nodes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/node"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/connection"] });
+    },
+  });
+
+  const activeNode = nodes?.find((n) => n.isActive);
+  const hasNodes = nodes && nodes.length > 0;
+
+  if (!hasNodes) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className="w-full justify-between font-mono text-xs gap-2"
+          data-testid="button-node-switcher"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <Server className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate">
+              {activeNode ? activeNode.name : "No active node"}
+            </span>
+          </div>
+          <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuLabel className="text-[10px] tracking-widest uppercase font-mono text-muted-foreground">
+          Switch Node
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {nodes?.map((node) => (
+          <DropdownMenuItem
+            key={node.id}
+            onClick={() => {
+              if (!node.isActive) {
+                activateMutation.mutate(node.id);
+              }
+            }}
+            className="gap-2 font-mono text-xs"
+            data-testid={`menu-item-node-${node.id}`}
+          >
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <span className="truncate">{node.name}</span>
+              <span className="text-[10px] text-muted-foreground truncate">
+                {node.host}
+              </span>
+            </div>
+            {node.isActive && (
+              <Check className="w-3.5 h-3.5 text-primary shrink-0" />
+            )}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => setLocation("/settings")}
+          className="gap-2 font-mono text-xs"
+          data-testid="menu-item-manage-nodes"
+        >
+          <Settings className="w-3.5 h-3.5" />
+          Manage Nodes
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function AppSidebar() {
   const [location] = useLocation();
+
+  const { data: alerts } = useQuery<Alert[]>({
+    queryKey: ["/api/alerts"],
+    refetchInterval: 10000,
+  });
+
+  const unacknowledgedCount = alerts?.filter((a) => !a.acknowledged).length ?? 0;
 
   return (
     <Sidebar>
@@ -78,6 +194,9 @@ export function AppSidebar() {
           </div>
         </div>
         <div className="neon-line mt-3" />
+        <div className="mt-2">
+          <NodeSwitcher />
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -88,6 +207,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {navItems.map((item) => {
                 const isActive = location === item.url;
+                const isAlertItem = item.title === "Alert Center";
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
@@ -111,6 +231,15 @@ export function AppSidebar() {
                           <span className={`text-sm font-mono ${isActive ? "text-primary" : ""}`}>
                             {item.title}
                           </span>
+                          {isAlertItem && unacknowledgedCount > 0 && (
+                            <Badge
+                              variant="destructive"
+                              className="ml-auto h-5 min-w-5 px-1 text-[10px] font-mono animate-pulse"
+                              data-testid="badge-alert-count"
+                            >
+                              {unacknowledgedCount}
+                            </Badge>
+                          )}
                         </div>
                       </Link>
                     </SidebarMenuButton>
