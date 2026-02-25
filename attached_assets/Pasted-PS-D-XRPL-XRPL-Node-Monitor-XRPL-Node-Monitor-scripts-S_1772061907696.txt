@@ -1,0 +1,109 @@
+PS D:\XRPL\XRPL-Node-Monitor\XRPL-Node-Monitor\scripts> Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Unrestricted
+
+Execution Policy Change
+The execution policy helps protect you from scripts that you do not trust. Changing the execution policy might expose
+you to the security risks described in the about_Execution_Policies help topic at
+https:/go.microsoft.com/fwlink/?LinkID=135170. Do you want to change the execution policy?
+[Y] Yes  [A] Yes to All  [N] No  [L] No to All  [S] Suspend  [?] Help (default is "N"): Y
+PS D:\XRPL\XRPL-Node-Monitor\XRPL-Node-Monitor\scripts> .\install.ps1
+
+Security warning
+Run only scripts that you trust. While scripts from the internet can be useful, this script can potentially harm your
+computer. If you trust this script, use the Unblock-File cmdlet to allow the script to run without this warning
+message. Do you want to run D:\XRPL\XRPL-Node-Monitor\XRPL-Node-Monitor\scripts\install.ps1?
+[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
+
+======================================
+  XRPL Node Monitor - Setup (Windows)
+======================================
+
+[OK]    Node.js v24.13.0 found
+[OK]    npm v11.6.2 found
+[WARN]  PostgreSQL client (psql) not found on PATH.
+
+  You need a PostgreSQL database. Options:
+    1. Install PostgreSQL locally:
+       Download from: https://www.postgresql.org/download/windows/
+       Or: winget install PostgreSQL.PostgreSQL
+    2. Use a free cloud database: https://neon.tech (no install needed)
+
+  You can continue setup and configure DATABASE_URL in .env later.
+
+[WARN]  .env.example not found - creating minimal .env
+[OK]    Created .env with defaults
+[WARN]  Edit .env and set your DATABASE_URL before starting the app.
+
+  Open it with:  notepad .env
+
+[INFO]  Installing npm dependencies...
+
+added 477 packages, and audited 478 packages in 58s
+
+76 packages are looking for funding
+  run `npm fund` for details
+
+4 vulnerabilities (1 low, 1 moderate, 2 high)
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+npm notice
+npm notice New minor version of npm available! 11.6.2 -> 11.11.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.11.0
+npm notice To update run: npm install -g npm@11.11.0
+npm notice
+[OK]    Dependencies installed
+
+[INFO]  Checking database connection and pushing schema...
+[WARN]  DATABASE_URL still has placeholder values in .env
+[WARN]  Skipping database setup - edit .env first, then run:  npm run db:push
+
+======================================
+  Setup complete!
+======================================
+
+  Next steps:
+    1. Edit .env and set your DATABASE_URL (if not done)
+    2. Start the app:
+
+       .\scripts\start.ps1           # Development mode
+       .\scripts\start.ps1 -Prod     # Production mode
+
+    3. Open http://localhost:5000 in your browser
+
+PS>start.ps1 -Prod
+start.ps1 : The term 'start.ps1' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the
+spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ start.ps1 -Prod
++ ~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (start.ps1:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+
+Suggestion [3,General]: The command start.ps1 was not found, but does exist in the current location. Windows PowerShell does not load commands from the current location by default. If you trust this command, instead type: ".\start.ps1". See "get-help about_Command_Precedence" for more details.
+PS D:\XRPL\XRPL-Node-Monitor\XRPL-Node-Monitor\scripts> ls
+
+
+    Directory: D:\XRPL\XRPL-Node-Monitor\XRPL-Node-Monitor\scripts
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----         2/25/2026   3:21 PM            124 .env
+-a----         2/25/2026   3:14 PM           5229 install.ps1
+-a----         2/25/2026   3:14 PM           5761 install.sh
+-a----         2/25/2026   3:14 PM           1431 start.ps1
+-a----         2/25/2026   3:14 PM           1482 start.sh
+
+
+PS D:\XRPL\XRPL-Node-Monitor\XRPL-Node-Monitor\scripts> .\start.ps1
+
+Security warning
+Run only scripts that you trust. While scripts from the internet can be useful, this script can potentially harm your computer. If
+you trust this script, use the Unblock-File cmdlet to allow the script to run without this warning message. Do you want to run
+D:\XRPL\XRPL-Node-Monitor\XRPL-Node-Monitor\scripts\start.ps1?
+[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
+[ERROR] .env file not found. Run the install script first:
+  .\scripts\install.ps1

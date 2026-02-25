@@ -11,12 +11,21 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$projectDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+# ---- Navigate to project root ----
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectDir = Split-Path -Parent $scriptDir
 Set-Location $projectDir
 
+# ---- Load .env ----
 if (-not (Test-Path ".env")) {
-    Write-Host "[ERROR] .env file not found. Run the install script first:" -ForegroundColor Red
-    Write-Host "  .\scripts\install.ps1" -ForegroundColor Yellow
+    Write-Host "[ERROR] .env file not found in $projectDir" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Run the install script first:" -ForegroundColor Yellow
+    Write-Host "    .\scripts\install.ps1" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Or create .env manually:" -ForegroundColor Yellow
+    Write-Host "    Copy-Item .env.example .env" -ForegroundColor Yellow
+    Write-Host "    notepad .env" -ForegroundColor Yellow
     exit 1
 }
 
@@ -31,6 +40,7 @@ foreach ($line in $envContent) {
 
 if (-not $env:DATABASE_URL) {
     Write-Host "[ERROR] DATABASE_URL is not set in .env" -ForegroundColor Red
+    Write-Host "  Edit .env and add your PostgreSQL connection string." -ForegroundColor Yellow
     exit 1
 }
 
@@ -41,6 +51,6 @@ if ($Prod) {
     Write-Host "[XRPL Monitor] Starting production server..." -ForegroundColor Green
     npm start
 } else {
-    Write-Host "[XRPL Monitor] Starting development server..." -ForegroundColor Green
+    Write-Host "[XRPL Monitor] Starting development server on http://localhost:5000 ..." -ForegroundColor Green
     npm run dev
 }

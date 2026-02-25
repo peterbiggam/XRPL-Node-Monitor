@@ -1,6 +1,7 @@
 # =============================================
 #  XRPL Node Monitor — Install Script (Windows)
-#  Run in PowerShell: .\scripts\install.ps1
+#  Run from the project root:  .\scripts\install.ps1
+#  Or from the scripts folder: .\install.ps1
 # =============================================
 
 $ErrorActionPreference = "Stop"
@@ -9,6 +10,17 @@ function Write-Info  { Write-Host "[INFO]  " -ForegroundColor Cyan -NoNewline; W
 function Write-Ok    { Write-Host "[OK]    " -ForegroundColor Green -NoNewline; Write-Host $args[0] }
 function Write-Warn  { Write-Host "[WARN]  " -ForegroundColor Yellow -NoNewline; Write-Host $args[0] }
 function Write-Fail  { Write-Host "[FAIL]  " -ForegroundColor Red -NoNewline; Write-Host $args[0] }
+
+# ---- Navigate to project root ----
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectDir = Split-Path -Parent $scriptDir
+Set-Location $projectDir
+Write-Info "Project directory: $projectDir"
+
+# ---- Unblock scripts so Windows stops showing security warnings ----
+Get-ChildItem -Path "$scriptDir\*.ps1" | ForEach-Object {
+    Unblock-File -Path $_.FullName -ErrorAction SilentlyContinue
+}
 
 Write-Host ""
 Write-Host "======================================" -ForegroundColor Cyan
@@ -125,7 +137,9 @@ Write-Host "======================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Next steps:"
 Write-Host "    1. Edit .env and set your DATABASE_URL (if not done)"
-Write-Host "    2. Start the app:"
+Write-Host "       notepad .env"
+Write-Host ""
+Write-Host "    2. Start the app (from the project root):"
 Write-Host ""
 Write-Host "       .\scripts\start.ps1           # Development mode" -ForegroundColor Cyan
 Write-Host "       .\scripts\start.ps1 -Prod     # Production mode" -ForegroundColor Cyan
