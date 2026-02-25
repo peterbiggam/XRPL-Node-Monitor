@@ -88,36 +88,45 @@ function DashboardSkeleton() {
   );
 }
 
-function DisconnectedState({ message }: { message?: string }) {
+function DisconnectedBanner({ message }: { message?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 gap-6" data-testid="state-disconnected">
-      <div className="relative">
-        <svg viewBox="0 0 120 104" className="w-24 h-24 text-destructive/30">
-          <polygon
-            points="60,2 118,32 118,72 60,102 2,72 2,32"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <AlertTriangle className="w-10 h-10 text-destructive animate-flicker" />
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="relative rounded-lg cyber-border overflow-hidden"
+      style={{ boxShadow: "0 0 20px rgba(239, 68, 68, 0.15), 0 0 40px rgba(239, 68, 68, 0.05)" }}
+      data-testid="state-disconnected"
+    >
+      <div className="h-[2px] bg-gradient-to-r from-transparent via-destructive to-transparent animate-flicker" />
+      <div className="flex items-center gap-4 px-4 py-3 bg-destructive/5">
+        <div className="relative flex-shrink-0">
+          <svg viewBox="0 0 60 52" className="w-10 h-10 text-destructive/40">
+            <polygon
+              points="30,1 59,16 59,36 30,51 1,36 1,16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5 text-destructive animate-flicker" />
+          </div>
         </div>
+        <div className="flex-1 min-w-0">
+          <p
+            className="text-sm font-mono font-bold uppercase tracking-widest animate-flicker"
+            style={{ textShadow: "0 0 10px rgba(239,68,68,0.5), 0 0 20px rgba(239,68,68,0.2)" }}
+            data-testid="text-signal-lost"
+          >
+            SIGNAL LOST
+          </p>
+          <p className="text-xs text-muted-foreground font-mono truncate mt-0.5">
+            {message || "Unable to connect to XRPL node. Check connection settings."}
+          </p>
+        </div>
+        <StatusIndicator status="disconnected" label="Offline" />
       </div>
-      <div className="text-center space-y-2">
-        <p
-          className="text-2xl font-mono font-bold uppercase tracking-widest animate-flicker"
-          style={{ textShadow: "0 0 10px rgba(239,68,68,0.5), 0 0 20px rgba(239,68,68,0.2)" }}
-          data-testid="text-signal-lost"
-        >
-          SIGNAL LOST
-        </p>
-        <p className="text-sm text-muted-foreground max-w-md font-mono">
-          {message || "Unable to connect to the XRPL node. Check your connection settings and ensure the node is running."}
-        </p>
-      </div>
-      <StatusIndicator status="disconnected" label="Disconnected" />
-    </div>
+    </motion.div>
   );
 }
 
@@ -215,22 +224,8 @@ export default function DashboardPage() {
     );
   }
 
-  if (isDisconnected && !node) {
-    return (
-      <div className="p-4 overflow-y-auto h-full">
-        <div className="mb-6">
-          <h1 className="text-xl font-semibold font-mono uppercase tracking-widest text-glow" data-testid="text-page-title">
-            XRPL NODE COMMAND CENTER
-          </h1>
-          <div className="neon-line mt-2" />
-        </div>
-        <DisconnectedState message={nodeResp?.message} />
-      </div>
-    );
-  }
-
   const serverState = node?.serverState ?? "unknown";
-  const statusType = getServerStateStatus(serverState);
+  const statusType = isDisconnected ? "disconnected" : getServerStateStatus(serverState);
 
   return (
     <div className="p-4 overflow-y-auto h-full">
@@ -244,11 +239,15 @@ export default function DashboardPage() {
               XRPL NODE COMMAND CENTER
             </h1>
           </div>
-          <StatusIndicator status={statusType} />
+          {!isDisconnected && <StatusIndicator status={statusType} />}
         </div>
         <div className="neon-line mt-2" />
         <div className="mt-2 h-[2px] overflow-hidden rounded-full bg-muted/30">
-          <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-primary to-transparent animate-data-flow" />
+          <div
+            className={`h-full w-1/3 bg-gradient-to-r from-transparent to-transparent ${
+              isDisconnected ? "via-destructive/50" : "via-primary"
+            } animate-data-flow`}
+          />
         </div>
       </div>
 
@@ -259,6 +258,10 @@ export default function DashboardPage() {
           animate="visible"
           className="space-y-4"
         >
+          {isDisconnected && (
+            <DisconnectedBanner message={nodeResp?.message} />
+          )}
+
           <motion.div
             variants={containerVariants}
             className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"
@@ -267,8 +270,8 @@ export default function DashboardPage() {
               <MetricCard
                 icon={Server}
                 label="Node Status"
-                value={serverState.charAt(0).toUpperCase() + serverState.slice(1)}
-                subValue={node ? `Uptime: ${formatUptime(node.uptime)}` : undefined}
+                value={isDisconnected ? "Offline" : serverState.charAt(0).toUpperCase() + serverState.slice(1)}
+                subValue={node ? `Uptime: ${formatUptime(node.uptime)}` : "No connection"}
                 testId="card-node-status"
               >
                 <div className="space-y-1">
@@ -277,7 +280,10 @@ export default function DashboardPage() {
                       v{node.buildVersion}
                     </p>
                   )}
-                  <StatusIndicator status={statusType} label={statusType.charAt(0).toUpperCase() + statusType.slice(1)} />
+                  <StatusIndicator
+                    status={isDisconnected ? "disconnected" : statusType}
+                    label={isDisconnected ? "Disconnected" : statusType.charAt(0).toUpperCase() + statusType.slice(1)}
+                  />
                 </div>
               </MetricCard>
             </motion.div>
@@ -287,10 +293,10 @@ export default function DashboardPage() {
                 icon={BookOpen}
                 label="Latest Ledger"
                 value={ledger ? formatNumber(ledger.ledgerIndex) : "--"}
-                subValue={ledger?.closeTimeHuman ? ledger.closeTimeHuman : undefined}
+                subValue={ledger?.closeTimeHuman ? ledger.closeTimeHuman : "Awaiting data"}
                 testId="card-ledger"
               >
-                {ledger && (
+                {ledger ? (
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground font-mono" data-testid="text-tx-count">
                       {formatNumber(ledger.transactionCount)} transactions
@@ -299,6 +305,8 @@ export default function DashboardPage() {
                       <SparklineChart data={ledgerSeqs} color="hsl(var(--chart-1))" />
                     )}
                   </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground font-mono">No ledger data</p>
                 )}
               </MetricCard>
             </motion.div>
@@ -308,10 +316,10 @@ export default function DashboardPage() {
                 icon={Globe}
                 label="Network"
                 value={node ? formatNumber(node.peers) : "--"}
-                subValue={node ? getNetworkType(node.completeLedgers) : undefined}
+                subValue={node ? getNetworkType(node.completeLedgers) : "Awaiting data"}
                 testId="card-network"
               >
-                {node && (
+                {node ? (
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground font-mono" data-testid="text-quorum">
                       Quorum: {node.validationQuorum}
@@ -320,6 +328,8 @@ export default function DashboardPage() {
                       Connected Peers
                     </p>
                   </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground font-mono">No peer data</p>
                 )}
               </MetricCard>
             </motion.div>
@@ -333,10 +343,10 @@ export default function DashboardPage() {
                     ? `${node.lastClose.convergeTimeS.toFixed(1)}s`
                     : "--"
                 }
-                subValue={node ? `${node.lastClose.proposers} proposers` : undefined}
+                subValue={node ? `${node.lastClose.proposers} proposers` : "Awaiting data"}
                 testId="card-performance"
               >
-                {node && (
+                {node ? (
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground font-mono" data-testid="text-load-factor">
                       Load Factor: {node.loadFactor}
@@ -345,39 +355,39 @@ export default function DashboardPage() {
                       <SparklineChart data={closeTimes} color="hsl(var(--chart-2))" />
                     )}
                   </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground font-mono">No performance data</p>
                 )}
               </MetricCard>
             </motion.div>
           </motion.div>
 
-          {node && (
-            <motion.div
-              variants={containerVariants}
-              className="grid grid-cols-1 md:grid-cols-2 gap-4"
-            >
-              <motion.div variants={itemVariants}>
-                <Card className="cyber-border overflow-visible" data-testid="card-ledger-range">
-                  <CardContent className="p-4">
-                    <p className="text-xs font-mono text-muted-foreground mb-2 uppercase tracking-wider">Complete Ledger Range</p>
-                    <p className="text-lg font-mono text-primary text-glow" data-testid="text-ledger-range">
-                      {node.completeLedgers || "N/A"}
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-              <motion.div variants={itemVariants}>
-                <Card className="cyber-border overflow-visible" data-testid="card-node-key">
-                  <CardContent className="p-4">
-                    <p className="text-xs font-mono text-muted-foreground mb-2 uppercase tracking-wider">Node Public Key</p>
-                    <p className="text-sm font-mono truncate text-primary/80" data-testid="text-pubkey">
-                      {node.pubkeyNode || "N/A"}
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
+          <motion.div
+            variants={containerVariants}
+            className="grid grid-cols-1 md:grid-cols-2 gap-4"
+          >
+            <motion.div variants={itemVariants}>
+              <Card className="cyber-border overflow-visible" data-testid="card-ledger-range">
+                <CardContent className="p-4">
+                  <p className="text-xs font-mono text-muted-foreground mb-2 uppercase tracking-wider">Complete Ledger Range</p>
+                  <p className="text-lg font-mono text-primary text-glow" data-testid="text-ledger-range">
+                    {node?.completeLedgers || "--"}
+                  </p>
+                </CardContent>
+              </Card>
             </motion.div>
-          )}
+
+            <motion.div variants={itemVariants}>
+              <Card className="cyber-border overflow-visible" data-testid="card-node-key">
+                <CardContent className="p-4">
+                  <p className="text-xs font-mono text-muted-foreground mb-2 uppercase tracking-wider">Node Public Key</p>
+                  <p className="text-sm font-mono truncate text-primary/80" data-testid="text-pubkey">
+                    {node?.pubkeyNode || "--"}
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </motion.div>
 
           <DataStreamSection hashes={ledgerHashes} />
         </motion.div>
