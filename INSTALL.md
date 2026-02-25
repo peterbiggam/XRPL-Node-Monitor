@@ -1,13 +1,53 @@
 # XRPL Node Monitor — Installation Guide
 
-## Prerequisites
+## Docker (Easiest — Recommended)
 
-You need two things installed on your machine:
+Docker handles everything for you — the app, database, and all dependencies in one command.
+
+### Prerequisites
+
+Install Docker Desktop:
+- **Windows**: [Download Docker Desktop](https://www.docker.com/products/docker-desktop/) or `winget install Docker.DockerDesktop`
+- **macOS**: [Download Docker Desktop](https://www.docker.com/products/docker-desktop/) or `brew install --cask docker`
+- **Linux**: [Install Docker Engine](https://docs.docker.com/engine/install/)
+
+### Run It
+
+```bash
+git clone <your-repo-url> xrpl-monitor
+cd xrpl-monitor
+docker compose up -d
+```
+
+That's it. Open **http://localhost:5000** in your browser.
+
+The first run takes a minute or two to build. After that it starts in seconds.
+
+### Docker Commands
+
+```bash
+docker compose up -d        # Start in background
+docker compose down          # Stop
+docker compose logs -f app   # View app logs
+docker compose up -d --build # Rebuild after code changes
+```
+
+### Customization
+
+To change the database password or port, edit `docker-compose.yml` before the first run. The default credentials are only accessible from within Docker's network, not exposed to the internet.
+
+---
+
+## Script Install (Without Docker)
+
+If you prefer running directly on your machine without Docker.
+
+### Prerequisites
 
 1. **Node.js** (version 18 or newer) — [Download here](https://nodejs.org)
 2. **PostgreSQL** database — either installed locally or a free cloud database
 
-### Installing Node.js
+#### Installing Node.js
 
 | Platform | Command |
 |----------|---------|
@@ -16,7 +56,7 @@ You need two things installed on your machine:
 | **Ubuntu/Debian** | `curl -fsSL https://deb.nodesource.com/setup_20.x \| sudo -E bash - && sudo apt-get install -y nodejs` |
 | **Fedora** | `sudo dnf install -y nodejs` |
 
-### Setting Up PostgreSQL
+#### Setting Up PostgreSQL
 
 **Option A — Local install:**
 
@@ -36,11 +76,9 @@ psql -U postgres -c "CREATE DATABASE xrpl_monitor;"
 
 Sign up at [neon.tech](https://neon.tech) and create a free PostgreSQL database. Copy the connection string they provide.
 
----
+### Quick Start
 
-## Quick Start (Recommended)
-
-### Linux / macOS
+#### Linux / macOS
 
 ```bash
 git clone <your-repo-url> xrpl-monitor
@@ -55,7 +93,7 @@ Then start the app:
 ./scripts/start.sh
 ```
 
-### Windows (PowerShell)
+#### Windows (PowerShell)
 
 ```powershell
 git clone <your-repo-url> xrpl-monitor
@@ -132,7 +170,10 @@ If you don't have your own node, you can monitor public nodes like `s2.ripple.co
 
 ## Running in Production
 
-To build and run an optimized production build:
+### With Docker (recommended)
+Docker Compose already runs in production mode by default.
+
+### Without Docker
 
 **Linux / macOS:**
 ```bash
@@ -141,7 +182,7 @@ To build and run an optimized production build:
 
 **Windows:**
 ```powershell
-.\scripts\start.ps1 -Prod
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Prod
 ```
 
 **Or manually:**
@@ -153,6 +194,13 @@ npm start
 ---
 
 ## Troubleshooting
+
+### Docker: "port is already allocated"
+Another service is using port 5000 or 5432. Either stop that service or change the ports in `docker-compose.yml`:
+```yaml
+ports:
+  - "3000:5000"   # Use port 3000 instead
+```
 
 ### "DATABASE_URL, ensure the database is provisioned"
 Your `DATABASE_URL` environment variable is not set or the `.env` file is missing. Make sure you've created `.env` with a valid PostgreSQL connection string.
@@ -175,3 +223,4 @@ Check your version with `node -v`. You need version 18 or newer. If you have an 
 - Make sure your node is running and accessible from this machine
 - Check that the WebSocket port is open (default: `6006`)
 - Try connecting to a public node first (`s2.ripple.com` port `51233`) to verify the app works
+- If running in Docker and connecting to a node on the same machine, use `host.docker.internal` instead of `127.0.0.1` as the host

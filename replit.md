@@ -50,7 +50,7 @@ client/src/
 server/
   routes.ts       - API routes for XRPL proxy, metrics, alerts, nodes, AI, export, webhooks, health score, ledger lag, TPS, UNL, peer geolocation, node comparison
   storage.ts      - DatabaseStorage class implementing IStorage interface
-  db.ts           - Drizzle ORM + Neon serverless PostgreSQL connection
+  db.ts           - Drizzle ORM database connection (auto-detects Neon serverless or standard PostgreSQL)
 shared/
   schema.ts       - Drizzle tables, insert schemas (drizzle-zod), TypeScript types
 ```
