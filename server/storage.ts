@@ -73,11 +73,28 @@ export class DatabaseStorage implements IStorage {
 
   constructor() {
     this.connectionConfig = {
-      host: "localhost",
-      wsPort: 6006,
-      httpPort: 5005,
-      adminPort: 8080,
+      host: process.env.XRPL_HOST || "localhost",
+      wsPort: parseInt(process.env.XRPL_WS_PORT || "6006", 10),
+      httpPort: parseInt(process.env.XRPL_HTTP_PORT || "5005", 10),
+      adminPort: parseInt(process.env.XRPL_ADMIN_PORT || "8080", 10),
     };
+    this.seedAiConfigFromEnv();
+  }
+
+  private async seedAiConfigFromEnv() {
+    if (process.env.LM_STUDIO_URL) {
+      try {
+        const url = new URL(process.env.LM_STUDIO_URL);
+        const existing = await this.getAiConfig();
+        if (!existing) {
+          await this.setAiConfig({
+            host: url.hostname,
+            port: parseInt(url.port || "1234", 10),
+            model: "",
+          });
+        }
+      } catch {}
+    }
   }
 
   async getConnectionConfig(): Promise<ConnectionConfig> {

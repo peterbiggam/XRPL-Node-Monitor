@@ -32,9 +32,55 @@ docker compose logs -f app   # View app logs
 docker compose up -d --build # Rebuild after code changes
 ```
 
+### Connecting to Your XRPL Node
+
+The monitor needs to know where your XRPL node is. Edit the environment variables in `docker-compose.yml` before running `docker compose up`:
+
+**If your XRPL node runs directly on your PC (or in another Docker container with host networking):**
+```yaml
+XRPL_HOST: host.docker.internal
+XRPL_WS_PORT: "6006"
+XRPL_ADMIN_PORT: "8080"
+```
+`host.docker.internal` is a special Docker address that points back to your PC. This is the default.
+
+**If your XRPL node runs in its own Docker container:**
+You can either:
+1. Put both containers on the same Docker network — use the XRPL container name as the host:
+   ```yaml
+   XRPL_HOST: my-xrpl-node
+   ```
+   And add to the `app` service:
+   ```yaml
+   networks:
+     - default
+     - xrpl-network    # whatever network your node uses
+   ```
+2. Or if your XRPL node exposes ports to the host, just use `host.docker.internal` (the default).
+
+**Common XRPL node ports:**
+| Port | Purpose |
+|------|---------|
+| `6006` | WebSocket (peer protocol) |
+| `5005` | JSON-RPC / HTTP |
+| `8080` | Admin WebSocket |
+| `51235` | Peer protocol |
+
+You can also change these later in the app's Settings page without restarting Docker.
+
+### Connecting LM Studio for AI Analysis
+
+If you run [LM Studio](https://lmstudio.ai/) on your PC, uncomment the `LM_STUDIO_URL` line in `docker-compose.yml`:
+
+```yaml
+LM_STUDIO_URL: http://host.docker.internal:1234
+```
+
+Make sure LM Studio's local server is running (start it from within LM Studio). The monitor will auto-configure the AI connection on first startup.
+
 ### Customization
 
-To change the database password or port, edit `docker-compose.yml` before the first run. The default credentials are only accessible from within Docker's network, not exposed to the internet.
+To change the database password or app port, edit `docker-compose.yml` before the first run. The default database credentials are only accessible from within Docker's network, not exposed to the internet.
 
 ---
 
