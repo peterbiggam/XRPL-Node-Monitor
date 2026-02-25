@@ -1,0 +1,224 @@
+PS D:\XRPL\XRPL-Node-Monitor\XRPL-Node-Monitor> docker compose up -d
+[+] up 14/14
+ ✔ Image postgres:16-alpine Pulled                                                                                               33.6s
+#1 [internal] load local bake definitions
+#1 reading from stdin 553B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 192B 0.0s done
+#2 DONE 0.2s
+
+#3 [internal] load metadata for docker.io/library/node:20-slim
+#3 DONE 10.5s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 87B done
+#4 DONE 0.1s
+
+#5 [internal] load build context
+#5 DONE 0.0s
+
+#6 [1/6] FROM docker.io/library/node:20-slim@sha256:d8a35d586fad3af7abb6fdb9ba972388395405f4d462da9e4a4ddcde67b5e0fb
+#6 resolve docker.io/library/node:20-slim@sha256:d8a35d586fad3af7abb6fdb9ba972388395405f4d462da9e4a4ddcde67b5e0fb 0.1s done
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 0B / 40.98MB 0.2s
+#6 sha256:c2b9c0e674a1fd2c4d4825d85568fd9a852f660171cafc4466a8de90e329413b 0B / 448B 0.2s
+#6 sha256:2664cf4489e51990ef76f94201408a31e43d6a369473cecdf7f8b8a40aeb1c29 0B / 1.71MB 0.2s
+#6 sha256:05988a666f72e9607315b845938dece280a7f80deebc985944c7330233b75e93 0B / 3.31kB 0.2s
+#6 sha256:c2b9c0e674a1fd2c4d4825d85568fd9a852f660171cafc4466a8de90e329413b 448B / 448B 0.5s done
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 2.10MB / 40.98MB 0.8s
+#6 sha256:05988a666f72e9607315b845938dece280a7f80deebc985944c7330233b75e93 3.31kB / 3.31kB 0.6s done
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 0B / 28.24MB 0.2s
+#6 sha256:2664cf4489e51990ef76f94201408a31e43d6a369473cecdf7f8b8a40aeb1c29 1.05MB / 1.71MB 1.2s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 4.19MB / 40.98MB 1.7s
+#6 sha256:2664cf4489e51990ef76f94201408a31e43d6a369473cecdf7f8b8a40aeb1c29 1.71MB / 1.71MB 1.6s done
+#6 ...
+
+#5 [internal] load build context
+#5 transferring context: 11.57MB 2.3s done
+#5 DONE 2.5s
+
+#6 [1/6] FROM docker.io/library/node:20-slim@sha256:d8a35d586fad3af7abb6fdb9ba972388395405f4d462da9e4a4ddcde67b5e0fb
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 2.10MB / 28.24MB 1.5s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 6.29MB / 40.98MB 2.4s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 8.39MB / 40.98MB 2.7s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 4.19MB / 28.24MB 2.0s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 5.75MB / 28.24MB 2.3s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 10.49MB / 40.98MB 3.2s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 7.34MB / 28.24MB 2.4s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 12.58MB / 40.98MB 3.5s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 9.44MB / 28.24MB 2.7s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 11.53MB / 28.24MB 3.0s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 14.68MB / 40.98MB 4.1s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 13.63MB / 28.24MB 3.5s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 15.73MB / 28.24MB 3.8s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 16.78MB / 40.98MB 4.8s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 18.87MB / 28.24MB 4.4s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 18.87MB / 40.98MB 5.4s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 22.02MB / 28.24MB 4.8s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 20.97MB / 40.98MB 6.0s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 24.12MB / 28.24MB 5.3s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 27.26MB / 28.24MB 6.3s
+#6 sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 28.24MB / 28.24MB 6.5s done
+#6 extracting sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 25.10MB / 40.98MB 7.4s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 27.26MB / 40.98MB 7.7s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 29.36MB / 40.98MB 7.8s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 31.46MB / 40.98MB 8.1s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 34.14MB / 40.98MB 8.6s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 36.70MB / 40.98MB 8.9s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 38.80MB / 40.98MB 9.2s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 40.98MB / 40.98MB 9.6s
+#6 sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 40.98MB / 40.98MB 9.7s done
+#6 extracting sha256:84a2afebaf4de2e8eb885634a69abd0087b79c947c53fa4f0481235d6dfadc6c 5.2s done
+#6 DONE 13.1s
+
+#6 [1/6] FROM docker.io/library/node:20-slim@sha256:d8a35d586fad3af7abb6fdb9ba972388395405f4d462da9e4a4ddcde67b5e0fb
+#6 extracting sha256:05988a666f72e9607315b845938dece280a7f80deebc985944c7330233b75e93 0.1s done
+#6 extracting sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7
+#6 extracting sha256:a0655704972fcc45126ac8450b9a9f55556904429b00db4b3f7737fa2937f7a7 5.5s done
+#6 DONE 18.7s
+
+#6 [1/6] FROM docker.io/library/node:20-slim@sha256:d8a35d586fad3af7abb6fdb9ba972388395405f4d462da9e4a4ddcde67b5e0fb
+#6 extracting sha256:2664cf4489e51990ef76f94201408a31e43d6a369473cecdf7f8b8a40aeb1c29
+#6 extracting sha256:2664cf4489e51990ef76f94201408a31e43d6a369473cecdf7f8b8a40aeb1c29 0.3s done
+#6 DONE 18.9s
+
+#6 [1/6] FROM docker.io/library/node:20-slim@sha256:d8a35d586fad3af7abb6fdb9ba972388395405f4d462da9e4a4ddcde67b5e0fb
+#6 extracting sha256:c2b9c0e674a1fd2c4d4825d85568fd9a852f660171cafc4466a8de90e329413b 0.1s done
+#6 DONE 19.0s
+
+#7 [2/6] WORKDIR /app
+#7 DONE 1.7s
+
+#8 [3/6] COPY package.json package-lock.json* ./
+#8 DONE 0.2s
+
+#9 [4/6] RUN npm install
+#9 41.30
+#9 41.30 added 480 packages, and audited 481 packages in 39s
+#9 41.30
+#9 41.30 77 packages are looking for funding
+#9 41.30   run `npm fund` for details
+#9 41.33
+#9 41.33 4 vulnerabilities (1 low, 1 moderate, 2 high)
+#9 41.33
+#9 41.33 To address all issues, run:
+#9 41.33   npm audit fix
+#9 41.33
+#9 41.33 Run `npm audit` for details.
+#9 41.33 npm notice
+#9 41.33 npm notice New major version of npm available! 10.8.2 -> 11.11.0
+#9 41.33 npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.11.0
+#9 41.33 npm notice To update run: npm install -g npm@11.11.0
+#9 41.33 npm notice
+#9 DONE 43.6s
+
+#10 [5/6] COPY . .
+#10 DONE 0.7s
+
+#11 [6/6] RUN npm run build
+#11 0.828
+#11 0.828 > rest-express@1.0.0 build
+#11 0.828 > tsx script/build.ts
+#11 0.828
+#11 2.618 building client...
+#11 2.797 vite v7.3.0 building client environment for production...
+#11 4.252 transforming...
+#11 9.022
+#11 9.022 A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+#11 26.42 ✓ 2814 modules transformed.
+#11 30.91 rendering chunks...
+#11 30.99 computing gzip size...
+#11 31.05 ../dist/public/index.html                     2.49 kB │ gzip:   0.95 kB
+#11 31.05 ../dist/public/assets/index-Hjg-_hBU.css     82.29 kB │ gzip:  13.46 kB
+#11 31.05 ../dist/public/assets/index-BjfkTNSG.js   1,226.90 kB │ gzip: 345.67 kB
+#11 31.05
+#11 31.05 (!) Some chunks are larger than 500 kB after minification. Consider:
+#11 31.05 - Using dynamic import() to code-split the application
+#11 31.05 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+#11 31.05 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#11 31.05 ✓ built in 27.68s
+#11 31.05 building server...
+#11 31.38 ✘ [ERROR] Top-level await is currently not supported with the "cjs" output format
+#11 31.38
+#11 31.38     server/db.ts:12:22:
+#11 31.38       12 │   const { drizzle } = await import("drizzle-orm/neon-serverless");
+#11 31.38          ╵                       ~~~~~
+#11 31.38
+#11 31.38 ✘ [ERROR] Top-level await is currently not supported with the "cjs" output format
+#11 31.38
+#11 31.38     server/db.ts:13:14:
+#11 31.38       13 │   const ws = (await import("ws")).default;
+#11 31.38          ╵               ~~~~~
+#11 31.38
+#11 31.38 ✘ [ERROR] Top-level await is currently not supported with the "cjs" output format
+#11 31.38
+#11 31.38     server/db.ts:20:22:
+#11 31.38       20 │   const { drizzle } = await import("drizzle-orm/node-postgres");
+#11 31.38          ╵                       ~~~~~
+#11 31.38
+#11 31.38 ✘ [ERROR] Top-level await is currently not supported with the "cjs" output format
+#11 31.38
+#11 31.38     server/db.ts:21:13:
+#11 31.38       21 │   const pg = await import("pg");
+#11 31.38          ╵              ~~~~~
+#11 31.38
+#11 31.77 4 errors
+#11 31.78 Error: Build failed with 4 errors:
+#11 31.78 server/db.ts:12:22: ERROR: Top-level await is currently not supported with the "cjs" output format
+#11 31.78 server/db.ts:13:14: ERROR: Top-level await is currently not supported with the "cjs" output format
+#11 31.78 server/db.ts:20:22: ERROR: Top-level await is currently not supported with the "cjs" output format
+#11 31.78 server/db.ts:21:13: ERROR: Top-level await is currently not supported with the "cjs" output format
+#11 31.78     at failureErrorWithLog (/app/node_modules/esbuild/lib/main.js:1467:15)
+#11 31.78     at /app/node_modules/esbuild/lib/main.js:926:25
+#11 31.78     at /app/node_modules/esbuild/lib/main.js:878:52
+#11 31.78     at buildResponseToResult (/app/node_modules/esbuild/lib/main.js:924:7)
+#11 31.78     at /app/node_modules/esbuild/lib/main.js:951:16
+#11 31.78     at responseCallbacks.<computed> (/app/node_modules/esbuild/lib/main.js:603:9)
+#11 31.78     at handleIncomingPacket (/app/node_modules/esbuild/lib/main.js:658:12)
+#11 31.78     at Socket.readFromStdout (/app/node_modules/esbuild/lib/main.js:581:7)
+#11 31.78     at Socket.emit (node:events:524:28)
+#11 31.78     at addChunk (node:internal/streams/readable:561:12) {
+#11 31.78   errors: [Getter/Setter],
+#11 31.78   warnings: [Getter/Setter]
+#11 31.78 }
+#11 ERROR: process "/bin/sh -c npm run build" did not complete successfully: exit code: 1
+------
+ > [6/6] RUN npm run build:
+31.78     at buildResponseToResult (/app/node_modules/esbuild/lib/main.js:924:7)
+31.78     at /app/node_modules/esbuild/lib/main.js:951:16
+31.78     at responseCallbacks.<computed> (/app/node_modules/esbuild/lib/main.js:603:9)
+31.78     at handleIncomingPacket (/app/node_modules/esbuild/lib/main.js:658:12)
+31.78     at Socket.readFromStdout (/app/node_modules/esbuild/lib/main.js:581:7)
+31.78     at Socket.emit (node:events:524:28)
+31.78     at addChunk (node:internal/streams/readable:561:12) {
+31.78   errors: [Getter/Setter],
+31.78   warnings: [Getter/Setter]
+[+] up 14/15
+ ✔ Image postgres:16-alpine    Pulled                                                                                           33.6s
+ - Image xrpl-node-monitor-app Building                                                                                         109.7s
+WARNING: current commit information was not captured by the build: git was not found in the system: exec: "git.exe": executable file not found in %PATH%
+
+Dockerfile:10
+
+--------------------
+
+   8 |     COPY . .
+
+   9 |
+
+  10 | >>> RUN npm run build
+
+  11 |
+
+  12 |     EXPOSE 5000
+
+--------------------
+
+failed to solve: process "/bin/sh -c npm run build" did not complete successfully: exit code: 1
+
+
+
+View build details: docker-desktop://dashboard/build/default/default/0tlel4rnp6y1ekzu55zlz2clg
