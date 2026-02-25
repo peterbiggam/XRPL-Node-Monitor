@@ -1,37 +1,29 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { type ConnectionConfig } from "@shared/schema";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  getConnectionConfig(): Promise<ConnectionConfig>;
+  setConnectionConfig(config: ConnectionConfig): Promise<ConnectionConfig>;
 }
 
 export class MemStorage implements IStorage {
-  private users: Map<string, User>;
+  private connectionConfig: ConnectionConfig;
 
   constructor() {
-    this.users = new Map();
+    this.connectionConfig = {
+      host: "localhost",
+      wsPort: 6006,
+      httpPort: 5005,
+      adminPort: 8080,
+    };
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getConnectionConfig(): Promise<ConnectionConfig> {
+    return { ...this.connectionConfig };
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async setConnectionConfig(config: ConnectionConfig): Promise<ConnectionConfig> {
+    this.connectionConfig = { ...config };
+    return this.connectionConfig;
   }
 }
 
