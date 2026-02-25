@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BookOpen, Hash, Clock, FileText, Layers, ArrowRightLeft } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { motion } from "framer-motion";
-import type { LedgerInfo } from "@shared/schema";
+import type { LedgerInfo, MetricsSnapshot } from "@shared/schema";
 
 interface LedgerResponse {
   status: string;
@@ -182,11 +182,39 @@ function RecentLedgersTable({ currentLedger }: { currentLedger: LedgerInfo }) {
   );
 }
 
-function CloseTimeChart({ currentLedger }: { currentLedger: LedgerInfo }) {
-  const chartData = Array.from({ length: 20 }, (_, i) => ({
-    ledger: currentLedger.ledgerIndex - (19 - i),
-    closeTime: 3.5 + Math.random() * 1.5,
-  }));
+function CloseTimeChart() {
+  const { data: snapshots } = useQuery<MetricsSnapshot[]>({
+    queryKey: [`/api/metrics/history?hours=1`],
+    refetchInterval: 30000,
+  });
+
+  const chartData = (snapshots || [])
+    .filter((s) => s.closeTimeMs != null && s.closeTimeMs > 0)
+    .map((s) => ({
+      time: new Date(s.timestamp!).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" }),
+      closeTime: Number((s.closeTimeMs! / 1000).toFixed(2)),
+    }));
+
+  if (chartData.length === 0) {
+    return (
+      <motion.div variants={itemVariants}>
+        <Card className="cyber-border relative overflow-visible">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-60" />
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium tracking-wide uppercase">Ledger Close Times</CardTitle>
+            <Clock className="w-4 h-4 text-primary/60" />
+          </CardHeader>
+          <CardContent>
+            <div className="h-64 flex items-center justify-center">
+              <p className="text-sm text-muted-foreground font-mono" data-testid="text-no-close-time-data">
+                Collecting close time data...
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div variants={itemVariants}>
@@ -211,14 +239,13 @@ function CloseTimeChart({ currentLedger }: { currentLedger: LedgerInfo }) {
                   </filter>
                 </defs>
                 <XAxis
-                  dataKey="ledger"
-                  tickFormatter={(v) => `#${v}`}
+                  dataKey="time"
                   tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                   axisLine={{ stroke: "hsl(var(--border))" }}
                   tickLine={false}
                 />
                 <YAxis
-                  domain={[2, 6]}
+                  domain={["auto", "auto"]}
                   tickFormatter={(v) => `${v}s`}
                   tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                   axisLine={{ stroke: "hsl(var(--border))" }}
@@ -233,7 +260,6 @@ function CloseTimeChart({ currentLedger }: { currentLedger: LedgerInfo }) {
                     fontSize: "12px",
                     boxShadow: "0 0 15px rgba(0, 230, 255, 0.1)",
                   }}
-                  labelFormatter={(v) => `Ledger #${v}`}
                   formatter={(value: number) => [`${value.toFixed(2)}s`, "Close Time"]}
                 />
                 <Area
@@ -323,7 +349,7 @@ export default function LedgerPage() {
         <RecentLedgersTable currentLedger={ledger} />
       </div>
 
-      <CloseTimeChart currentLedger={ledger} />
+      <CloseTimeChart />
     </motion.div>
   );
 }

@@ -373,7 +373,7 @@ export default function AlertsPage() {
           </div>
         ) : alerts && alerts.length > 0 ? (
           <div className="space-y-3">
-            <AnimatePresence mode="popLayout">
+            <AnimatePresence>
               {activeAlerts.map((alert) => (
                 <AlertRow
                   key={alert.id}
@@ -388,7 +388,7 @@ export default function AlertsPage() {
               <div className="neon-line my-4" />
             )}
 
-            <AnimatePresence mode="popLayout">
+            <AnimatePresence>
               {acknowledgedAlerts.map((alert) => (
                 <AlertRow
                   key={alert.id}
