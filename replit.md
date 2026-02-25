@@ -46,13 +46,20 @@ shared/
 - `GET /api/node/transactions` - Recent transactions
 - `GET /api/system/metrics` - System CPU, memory, disk, network stats
 
-## Theme
+## Theme - Cyberpunk/Futuristic Command Center
 - Dark mode by default with light mode toggle
-- Cyan/blue accent colors (XRPL-branded)
-- Space Grotesk font (sans), JetBrains Mono (mono)
+- Near-black backgrounds (225 30% 3%) with electric cyan primary (185 100% 50%)
+- Neon chart colors: cyan, electric purple, hot pink, lime green, amber
+- Oxanium font (headings/sans), JetBrains Mono (technical data/mono)
+- Custom CSS effects: cyber-glow, cyber-border, scanline, grid-bg, text-glow, neon-line
+- Canvas particle field animated background (animated-bg.tsx)
+- Framer-motion staggered entrance animations on all pages
+- HUD-style panels, hexagonal badge icons, glowing gauge components
+- "SIGNAL LOST" dramatic disconnected state with flickering text
+- Live clock in header, system status indicator in sidebar
 
 ## Dependencies
 - systeminformation - System hardware/OS metrics
 - ws - WebSocket client for XRPL node communication
 - recharts - Charts and data visualization
-- framer-motion - Animations
+- framer-motion - Page entrance animations and motion effects

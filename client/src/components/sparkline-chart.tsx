@@ -19,24 +19,35 @@ export function SparklineChart({
     return null;
   }
 
+  const gradientId = `sparkGrad-${color.replace(/[^a-zA-Z0-9]/g, "")}`;
+  const glowId = `sparkGlow-${color.replace(/[^a-zA-Z0-9]/g, "")}`;
+
   return (
     <div className={className} data-testid="chart-sparkline">
       <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id={`sparkGrad-${color.replace(/[^a-zA-Z0-9]/g, "")}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.3} />
-              <stop offset="100%" stopColor={color} stopOpacity={0.05} />
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.4} />
+              <stop offset="100%" stopColor={color} stopOpacity={0.02} />
             </linearGradient>
+            <filter id={glowId}>
+              <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
           <Area
             type="monotone"
             dataKey="value"
             stroke={color}
             strokeWidth={1.5}
-            fill={`url(#sparkGrad-${color.replace(/[^a-zA-Z0-9]/g, "")})`}
+            fill={`url(#${gradientId})`}
             dot={false}
             isAnimationActive={false}
+            filter={`url(#${glowId})`}
           />
         </AreaChart>
       </ResponsiveContainer>

@@ -2,16 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { MetricCard } from "@/components/metric-card";
 import { StatusIndicator } from "@/components/status-indicator";
 import { SparklineChart } from "@/components/sparkline-chart";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Server,
   BookOpen,
   Globe,
   Zap,
-  WifiOff,
+  AlertTriangle,
 } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import type { NodeInfo, LedgerInfo } from "@shared/schema";
 
 interface NodeResponse {
@@ -53,21 +53,34 @@ function getNetworkType(completeLedgers: string): string {
   return "Network";
 }
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.08 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+};
+
 function DashboardSkeleton() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
       {Array.from({ length: 4 }).map((_, i) => (
-        <Card key={i}>
+        <Card key={i} className="cyber-border animate-pulse">
           <CardContent className="p-4">
             <div className="flex items-center justify-between gap-2 mb-3">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-8 w-8 rounded-md" />
+              <div className="h-4 w-24 bg-muted rounded" />
+              <div className="h-9 w-9 bg-primary/10 rounded" style={{ clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)" }} />
             </div>
             <div className="space-y-2">
-              <Skeleton className="h-8 w-32" />
-              <Skeleton className="h-3 w-20" />
+              <div className="h-8 w-32 bg-muted rounded cyber-glow" />
+              <div className="h-3 w-20 bg-muted rounded" />
             </div>
-            <Skeleton className="h-10 w-full mt-3" />
+            <div className="h-10 w-full mt-3 bg-muted rounded" />
           </CardContent>
         </Card>
       ))}
@@ -77,13 +90,29 @@ function DashboardSkeleton() {
 
 function DisconnectedState({ message }: { message?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 gap-4" data-testid="state-disconnected">
-      <div className="flex items-center justify-center w-16 h-16 rounded-md bg-muted/50">
-        <WifiOff className="w-8 h-8 text-muted-foreground" />
+    <div className="flex flex-col items-center justify-center py-16 gap-6" data-testid="state-disconnected">
+      <div className="relative">
+        <svg viewBox="0 0 120 104" className="w-24 h-24 text-destructive/30">
+          <polygon
+            points="60,2 118,32 118,72 60,102 2,72 2,32"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <AlertTriangle className="w-10 h-10 text-destructive animate-flicker" />
+        </div>
       </div>
-      <div className="text-center space-y-1">
-        <p className="text-lg font-medium">Node Unavailable</p>
-        <p className="text-sm text-muted-foreground max-w-md">
+      <div className="text-center space-y-2">
+        <p
+          className="text-2xl font-mono font-bold uppercase tracking-widest animate-flicker"
+          style={{ textShadow: "0 0 10px rgba(239,68,68,0.5), 0 0 20px rgba(239,68,68,0.2)" }}
+          data-testid="text-signal-lost"
+        >
+          SIGNAL LOST
+        </p>
+        <p className="text-sm text-muted-foreground max-w-md font-mono">
           {message || "Unable to connect to the XRPL node. Check your connection settings and ensure the node is running."}
         </p>
       </div>
@@ -92,11 +121,43 @@ function DisconnectedState({ message }: { message?: string }) {
   );
 }
 
+function DataStreamSection({ hashes }: { hashes: string[] }) {
+  if (hashes.length === 0) return null;
+
+  return (
+    <motion.div variants={itemVariants} data-testid="section-data-stream">
+      <Card className="cyber-border overflow-visible">
+        <CardContent className="p-4">
+          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-3">
+            DATA STREAM
+          </p>
+          <div className="space-y-1">
+            {hashes.map((hash, i) => (
+              <div
+                key={`${hash}-${i}`}
+                className="flex items-center gap-2 font-mono text-xs"
+                style={{ opacity: 1 - i * 0.15 }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse-glow flex-shrink-0" />
+                <span className="text-primary/80 truncate" data-testid={`text-hash-${i}`}>
+                  {hash}
+                </span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
 export default function DashboardPage() {
   const closeTimesRef = useRef<number[]>([]);
   const ledgerSeqsRef = useRef<number[]>([]);
+  const ledgerHashesRef = useRef<string[]>([]);
   const [closeTimes, setCloseTimes] = useState<number[]>([]);
   const [ledgerSeqs, setLedgerSeqs] = useState<number[]>([]);
+  const [ledgerHashes, setLedgerHashes] = useState<string[]>([]);
 
   const trackLedgerData = useCallback((ledgerData: LedgerInfo | null) => {
     if (!ledgerData) return;
@@ -106,6 +167,12 @@ export default function DashboardPage() {
       const newSeqs = [...seqs, seq].slice(-20);
       ledgerSeqsRef.current = newSeqs;
       setLedgerSeqs(newSeqs);
+
+      if (ledgerData.ledgerHash) {
+        const newHashes = [ledgerData.ledgerHash, ...ledgerHashesRef.current].slice(0, 6);
+        ledgerHashesRef.current = newHashes;
+        setLedgerHashes(newHashes);
+      }
 
       if (ledgerData.closeTime > 0) {
         const newTimes = [...closeTimesRef.current, ledgerData.closeTime % 100].slice(-20);
@@ -138,8 +205,10 @@ export default function DashboardPage() {
     return (
       <div className="p-4 overflow-y-auto h-full">
         <div className="mb-6">
-          <h1 className="text-xl font-semibold" data-testid="text-page-title">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">XRPL Node Overview</p>
+          <h1 className="text-xl font-semibold font-mono uppercase tracking-widest text-glow" data-testid="text-page-title">
+            XRPL NODE COMMAND CENTER
+          </h1>
+          <div className="neon-line mt-2" />
         </div>
         <DashboardSkeleton />
       </div>
@@ -150,8 +219,10 @@ export default function DashboardPage() {
     return (
       <div className="p-4 overflow-y-auto h-full">
         <div className="mb-6">
-          <h1 className="text-xl font-semibold" data-testid="text-page-title">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">XRPL Node Overview</p>
+          <h1 className="text-xl font-semibold font-mono uppercase tracking-widest text-glow" data-testid="text-page-title">
+            XRPL NODE COMMAND CENTER
+          </h1>
+          <div className="neon-line mt-2" />
         </div>
         <DisconnectedState message={nodeResp?.message} />
       </div>
@@ -163,115 +234,154 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 overflow-y-auto h-full">
-      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold" data-testid="text-page-title">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">XRPL Node Overview</p>
-        </div>
-        <StatusIndicator status={statusType} />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <MetricCard
-          icon={Server}
-          label="Node Status"
-          value={serverState.charAt(0).toUpperCase() + serverState.slice(1)}
-          subValue={node ? `Uptime: ${formatUptime(node.uptime)}` : undefined}
-          testId="card-node-status"
-        >
-          <div className="space-y-1">
-            {node?.buildVersion && (
-              <p className="text-xs text-muted-foreground" data-testid="text-build-version">
-                v{node.buildVersion}
-              </p>
-            )}
-            <StatusIndicator status={statusType} label={statusType.charAt(0).toUpperCase() + statusType.slice(1)} />
+      <div className="mb-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="relative scanline">
+            <h1
+              className="text-xl font-bold font-mono uppercase tracking-widest text-glow"
+              data-testid="text-page-title"
+            >
+              XRPL NODE COMMAND CENTER
+            </h1>
           </div>
-        </MetricCard>
-
-        <MetricCard
-          icon={BookOpen}
-          label="Latest Ledger"
-          value={ledger ? formatNumber(ledger.ledgerIndex) : "--"}
-          subValue={ledger?.closeTimeHuman ? ledger.closeTimeHuman : undefined}
-          testId="card-ledger"
-        >
-          {ledger && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground" data-testid="text-tx-count">
-                {formatNumber(ledger.transactionCount)} transactions
-              </p>
-              {ledgerSeqs.length > 1 && (
-                <SparklineChart data={ledgerSeqs} color="hsl(var(--chart-1))" />
-              )}
-            </div>
-          )}
-        </MetricCard>
-
-        <MetricCard
-          icon={Globe}
-          label="Network"
-          value={node ? formatNumber(node.peers) : "--"}
-          subValue={node ? getNetworkType(node.completeLedgers) : undefined}
-          testId="card-network"
-        >
-          {node && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground" data-testid="text-quorum">
-                Quorum: {node.validationQuorum}
-              </p>
-              <p className="text-xs text-muted-foreground" data-testid="text-peers-label">
-                Connected Peers
-              </p>
-            </div>
-          )}
-        </MetricCard>
-
-        <MetricCard
-          icon={Zap}
-          label="Performance"
-          value={
-            node
-              ? `${node.lastClose.convergeTimeS.toFixed(1)}s`
-              : "--"
-          }
-          subValue={node ? `${node.lastClose.proposers} proposers` : undefined}
-          testId="card-performance"
-        >
-          {node && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground" data-testid="text-load-factor">
-                Load Factor: {node.loadFactor}
-              </p>
-              {closeTimes.length > 1 && (
-                <SparklineChart data={closeTimes} color="hsl(var(--chart-2))" />
-              )}
-            </div>
-          )}
-        </MetricCard>
+          <StatusIndicator status={statusType} />
+        </div>
+        <div className="neon-line mt-2" />
+        <div className="mt-2 h-[2px] overflow-hidden rounded-full bg-muted/30">
+          <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-primary to-transparent animate-data-flow" />
+        </div>
       </div>
 
-      {node && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-          <Card data-testid="card-ledger-range">
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground mb-2">Complete Ledger Range</p>
-              <p className="text-lg font-mono" data-testid="text-ledger-range">
-                {node.completeLedgers || "N/A"}
-              </p>
-            </CardContent>
-          </Card>
+      <AnimatePresence>
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className="space-y-4"
+        >
+          <motion.div
+            variants={containerVariants}
+            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"
+          >
+            <motion.div variants={itemVariants}>
+              <MetricCard
+                icon={Server}
+                label="Node Status"
+                value={serverState.charAt(0).toUpperCase() + serverState.slice(1)}
+                subValue={node ? `Uptime: ${formatUptime(node.uptime)}` : undefined}
+                testId="card-node-status"
+              >
+                <div className="space-y-1">
+                  {node?.buildVersion && (
+                    <p className="text-xs text-muted-foreground font-mono" data-testid="text-build-version">
+                      v{node.buildVersion}
+                    </p>
+                  )}
+                  <StatusIndicator status={statusType} label={statusType.charAt(0).toUpperCase() + statusType.slice(1)} />
+                </div>
+              </MetricCard>
+            </motion.div>
 
-          <Card data-testid="card-node-key">
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground mb-2">Node Public Key</p>
-              <p className="text-sm font-mono truncate" data-testid="text-pubkey">
-                {node.pubkeyNode || "N/A"}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+            <motion.div variants={itemVariants}>
+              <MetricCard
+                icon={BookOpen}
+                label="Latest Ledger"
+                value={ledger ? formatNumber(ledger.ledgerIndex) : "--"}
+                subValue={ledger?.closeTimeHuman ? ledger.closeTimeHuman : undefined}
+                testId="card-ledger"
+              >
+                {ledger && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-mono" data-testid="text-tx-count">
+                      {formatNumber(ledger.transactionCount)} transactions
+                    </p>
+                    {ledgerSeqs.length > 1 && (
+                      <SparklineChart data={ledgerSeqs} color="hsl(var(--chart-1))" />
+                    )}
+                  </div>
+                )}
+              </MetricCard>
+            </motion.div>
+
+            <motion.div variants={itemVariants}>
+              <MetricCard
+                icon={Globe}
+                label="Network"
+                value={node ? formatNumber(node.peers) : "--"}
+                subValue={node ? getNetworkType(node.completeLedgers) : undefined}
+                testId="card-network"
+              >
+                {node && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-mono" data-testid="text-quorum">
+                      Quorum: {node.validationQuorum}
+                    </p>
+                    <p className="text-xs text-muted-foreground font-mono" data-testid="text-peers-label">
+                      Connected Peers
+                    </p>
+                  </div>
+                )}
+              </MetricCard>
+            </motion.div>
+
+            <motion.div variants={itemVariants}>
+              <MetricCard
+                icon={Zap}
+                label="Performance"
+                value={
+                  node
+                    ? `${node.lastClose.convergeTimeS.toFixed(1)}s`
+                    : "--"
+                }
+                subValue={node ? `${node.lastClose.proposers} proposers` : undefined}
+                testId="card-performance"
+              >
+                {node && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-mono" data-testid="text-load-factor">
+                      Load Factor: {node.loadFactor}
+                    </p>
+                    {closeTimes.length > 1 && (
+                      <SparklineChart data={closeTimes} color="hsl(var(--chart-2))" />
+                    )}
+                  </div>
+                )}
+              </MetricCard>
+            </motion.div>
+          </motion.div>
+
+          {node && (
+            <motion.div
+              variants={containerVariants}
+              className="grid grid-cols-1 md:grid-cols-2 gap-4"
+            >
+              <motion.div variants={itemVariants}>
+                <Card className="cyber-border overflow-visible" data-testid="card-ledger-range">
+                  <CardContent className="p-4">
+                    <p className="text-xs font-mono text-muted-foreground mb-2 uppercase tracking-wider">Complete Ledger Range</p>
+                    <p className="text-lg font-mono text-primary text-glow" data-testid="text-ledger-range">
+                      {node.completeLedgers || "N/A"}
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div variants={itemVariants}>
+                <Card className="cyber-border overflow-visible" data-testid="card-node-key">
+                  <CardContent className="p-4">
+                    <p className="text-xs font-mono text-muted-foreground mb-2 uppercase tracking-wider">Node Public Key</p>
+                    <p className="text-sm font-mono truncate text-primary/80" data-testid="text-pubkey">
+                      {node.pubkeyNode || "N/A"}
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </motion.div>
+          )}
+
+          <DataStreamSection hashes={ledgerHashes} />
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
