@@ -57,21 +57,15 @@ Then start the app:
 
 ### Windows (PowerShell)
 
-First, allow scripts to run (one-time setup):
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-```
-
-Then:
 ```powershell
 git clone <your-repo-url> xrpl-monitor
 cd xrpl-monitor
-.\scripts\install.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 ```
 
 Then start the app:
 ```powershell
-.\scripts\start.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 ```
 
 Open **http://localhost:5000** in your browser.
