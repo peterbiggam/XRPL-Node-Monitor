@@ -24,10 +24,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Loader2, Save, Server, Plus, Pencil, Trash2, Zap, CircleDot } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, Save, Server, Plus, Pencil, Trash2, Zap, CircleDot, Bell, Send, ToggleLeft } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
 import { z } from "zod";
+import { type WebhookConfig } from "@shared/schema";
 
 const nodeFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -447,6 +457,411 @@ function NodeList() {
   );
 }
 
+const WEBHOOK_EVENTS = [
+  { value: "alert_critical", label: "Critical Alert" },
+  { value: "alert_warning", label: "Warning Alert" },
+  { value: "connection_lost", label: "Connection Lost" },
+];
+
+const webhookFormSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  type: z.enum(["discord", "telegram", "generic"]),
+  url: z.string().min(1, "URL is required"),
+  events: z.array(z.string()).min(1, "Select at least one event"),
+});
+type WebhookFormValues = z.infer<typeof webhookFormSchema>;
+
+function WebhookFormDialog({
+  webhook,
+  open,
+  onOpenChange,
+}: {
+  webhook?: WebhookConfig;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const isEditing = !!webhook;
+
+  const form = useForm<WebhookFormValues>({
+    resolver: zodResolver(webhookFormSchema),
+    defaultValues: {
+      name: webhook?.name ?? "",
+      type: (webhook?.type as "discord" | "telegram" | "generic") ?? "discord",
+      url: webhook?.url ?? "",
+      events: webhook?.events ?? ["alert_critical", "alert_warning", "connection_lost"],
+    },
+  });
+
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        name: webhook?.name ?? "",
+        type: (webhook?.type as "discord" | "telegram" | "generic") ?? "discord",
+        url: webhook?.url ?? "",
+        events: webhook?.events ?? ["alert_critical", "alert_warning", "connection_lost"],
+      });
+    }
+  }, [open, webhook, form]);
+
+  const createMutation = useMutation({
+    mutationFn: async (data: WebhookFormValues) => {
+      const res = await apiRequest("POST", "/api/webhooks", { ...data, enabled: true });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/webhooks"] });
+      onOpenChange(false);
+      toast({ title: "Webhook added", description: "New webhook has been configured." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to add webhook", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: WebhookFormValues) => {
+      const res = await apiRequest("PUT", `/api/webhooks/${webhook!.id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/webhooks"] });
+      onOpenChange(false);
+      toast({ title: "Webhook updated", description: "Webhook configuration has been updated." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update webhook", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
+  const selectedType = form.watch("type");
+
+  const onSubmit = (data: WebhookFormValues) => {
+    if (isEditing) {
+      updateMutation.mutate(data);
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{isEditing ? "Edit Webhook" : "Add Webhook"}</DialogTitle>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" data-testid="form-webhook">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="My Webhook" {...field} data-testid="input-webhook-name" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Type</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-webhook-type">
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="discord">Discord</SelectItem>
+                      <SelectItem value="telegram">Telegram</SelectItem>
+                      <SelectItem value="generic">Generic (HTTP)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{selectedType === "telegram" ? "Bot Token | Chat ID" : "URL"}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder={
+                        selectedType === "telegram"
+                          ? "botToken|chatId"
+                          : selectedType === "discord"
+                            ? "https://discord.com/api/webhooks/..."
+                            : "https://example.com/webhook"
+                      }
+                      {...field}
+                      data-testid="input-webhook-url"
+                    />
+                  </FormControl>
+                  {selectedType === "telegram" && (
+                    <FormDescription>
+                      Format: botToken|chatId (e.g. 123456:ABC-DEF|987654321)
+                    </FormDescription>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="events"
+              render={() => (
+                <FormItem>
+                  <FormLabel>Events</FormLabel>
+                  <div className="space-y-2">
+                    {WEBHOOK_EVENTS.map((event) => (
+                      <FormField
+                        key={event.value}
+                        control={form.control}
+                        name="events"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center gap-2 space-y-0">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value?.includes(event.value)}
+                                onCheckedChange={(checked) => {
+                                  const current = field.value || [];
+                                  if (checked) {
+                                    field.onChange([...current, event.value]);
+                                  } else {
+                                    field.onChange(current.filter((v: string) => v !== event.value));
+                                  }
+                                }}
+                                data-testid={`checkbox-event-${event.value}`}
+                              />
+                            </FormControl>
+                            <FormLabel className="text-sm font-normal cursor-pointer">
+                              {event.label}
+                            </FormLabel>
+                          </FormItem>
+                        )}
+                      />
+                    ))}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-webhook">
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isPending} data-testid="button-save-webhook">
+                {isPending ? <Loader2 className="animate-spin" /> : <Save />}
+                {isEditing ? "Update" : "Add Webhook"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WebhookList() {
+  const { toast } = useToast();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingWebhook, setEditingWebhook] = useState<WebhookConfig | undefined>();
+
+  const { data: webhooks, isLoading } = useQuery<WebhookConfig[]>({
+    queryKey: ["/api/webhooks"],
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) => {
+      const res = await apiRequest("PUT", `/api/webhooks/${id}`, { enabled });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/webhooks"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to toggle webhook", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/webhooks/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/webhooks"] });
+      toast({ title: "Webhook deleted", description: "Webhook has been removed." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to delete webhook", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const testMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/webhooks/${id}/test`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Test sent", description: "A test notification has been sent." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Test failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleEdit = (webhook: WebhookConfig) => {
+    setEditingWebhook(webhook);
+    setDialogOpen(true);
+  };
+
+  const handleAdd = () => {
+    setEditingWebhook(undefined);
+    setDialogOpen(true);
+  };
+
+  const typeLabel = (type: string) => {
+    switch (type) {
+      case "discord": return "Discord";
+      case "telegram": return "Telegram";
+      case "generic": return "HTTP";
+      default: return type;
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-20 w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
+        <div>
+          <h2 className="text-lg font-semibold" data-testid="text-webhooks-heading">Webhook Notifications</h2>
+          <p className="text-sm text-muted-foreground">
+            Configure webhook endpoints for alert notifications.
+          </p>
+        </div>
+        <Button onClick={handleAdd} data-testid="button-add-webhook">
+          <Plus />
+          Add Webhook
+        </Button>
+      </div>
+
+      {(!webhooks || webhooks.length === 0) ? (
+        <Card>
+          <CardContent className="py-8 text-center">
+            <Bell className="w-8 h-8 mx-auto text-muted-foreground mb-3" />
+            <p className="text-sm text-muted-foreground" data-testid="text-no-webhooks">
+              No webhooks configured yet. Add a webhook to receive notifications.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {webhooks.map((webhook) => (
+            <Card
+              key={webhook.id}
+              data-testid={`card-webhook-${webhook.id}`}
+            >
+              <CardContent className="py-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="mt-1">
+                      <Switch
+                        checked={webhook.enabled}
+                        onCheckedChange={(checked) =>
+                          toggleMutation.mutate({ id: webhook.id, enabled: checked })
+                        }
+                        data-testid={`switch-webhook-${webhook.id}`}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold font-mono text-sm" data-testid={`text-webhook-name-${webhook.id}`}>
+                          {webhook.name}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] font-mono">
+                          {typeLabel(webhook.type)}
+                        </Badge>
+                        {!webhook.enabled && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            Disabled
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate max-w-[300px]" data-testid={`text-webhook-url-${webhook.id}`}>
+                        {webhook.type === "telegram" ? "Telegram Bot" : webhook.url}
+                      </p>
+                      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                        {webhook.events?.map((event) => (
+                          <Badge key={event} variant="secondary" className="text-[10px]">
+                            {event.replace(/_/g, " ")}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => testMutation.mutate(webhook.id)}
+                      disabled={testMutation.isPending}
+                      data-testid={`button-test-webhook-${webhook.id}`}
+                    >
+                      <Send className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => handleEdit(webhook)}
+                      data-testid={`button-edit-webhook-${webhook.id}`}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => deleteMutation.mutate(webhook.id)}
+                      disabled={deleteMutation.isPending}
+                      data-testid={`button-delete-webhook-${webhook.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <WebhookFormDialog
+        webhook={editingWebhook}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
+    </>
+  );
+}
+
 export default function SettingsPage() {
   const { toast } = useToast();
 
@@ -524,6 +939,10 @@ export default function SettingsPage() {
 
       <div className="max-w-xl">
         <NodeList />
+      </div>
+
+      <div className="max-w-xl">
+        <WebhookList />
       </div>
 
       <Card className="max-w-xl">

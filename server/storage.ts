@@ -14,12 +14,15 @@ import {
   type AiConversation,
   type AiConfig,
   type InsertAiConfig,
+  type InsertWebhookConfig,
+  type WebhookConfig,
   metricsSnapshots,
   alerts,
   alertThresholds,
   savedNodes,
   aiConversations,
   aiConfig,
+  webhookConfigs,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -56,6 +59,13 @@ export interface IStorage {
 
   getAiConfig(): Promise<AiConfig | null>;
   setAiConfig(config: InsertAiConfig): Promise<AiConfig>;
+
+  getWebhookConfigs(): Promise<WebhookConfig[]>;
+  getWebhookConfig(id: number): Promise<WebhookConfig | null>;
+  createWebhookConfig(config: InsertWebhookConfig): Promise<WebhookConfig>;
+  updateWebhookConfig(id: number, data: Partial<InsertWebhookConfig>): Promise<WebhookConfig | null>;
+  deleteWebhookConfig(id: number): Promise<boolean>;
+  getEnabledWebhooksForEvent(event: string): Promise<WebhookConfig[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -243,6 +253,34 @@ export class DatabaseStorage implements IStorage {
     }
     const [result] = await db.insert(aiConfig).values(config).returning();
     return result;
+  }
+  async getWebhookConfigs(): Promise<WebhookConfig[]> {
+    return db.select().from(webhookConfigs);
+  }
+
+  async getWebhookConfig(id: number): Promise<WebhookConfig | null> {
+    const [result] = await db.select().from(webhookConfigs).where(eq(webhookConfigs.id, id));
+    return result || null;
+  }
+
+  async createWebhookConfig(config: InsertWebhookConfig): Promise<WebhookConfig> {
+    const [result] = await db.insert(webhookConfigs).values(config).returning();
+    return result;
+  }
+
+  async updateWebhookConfig(id: number, data: Partial<InsertWebhookConfig>): Promise<WebhookConfig | null> {
+    const [result] = await db.update(webhookConfigs).set(data).where(eq(webhookConfigs.id, id)).returning();
+    return result || null;
+  }
+
+  async deleteWebhookConfig(id: number): Promise<boolean> {
+    const result = await db.delete(webhookConfigs).where(eq(webhookConfigs.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getEnabledWebhooksForEvent(event: string): Promise<WebhookConfig[]> {
+    const all = await db.select().from(webhookConfigs).where(eq(webhookConfigs.enabled, true));
+    return all.filter(w => w.events && w.events.includes(event));
   }
 }
 

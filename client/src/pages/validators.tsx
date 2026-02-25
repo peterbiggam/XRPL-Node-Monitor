@@ -11,8 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Shield, CheckCircle, XCircle, Clock, Key, Globe, AlertTriangle } from "lucide-react";
+import { Shield, CheckCircle, XCircle, Clock, Key, Globe, AlertTriangle, GitCompare, Users, UserMinus, UserPlus } from "lucide-react";
 import { motion } from "framer-motion";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ValidatorInfo, AmendmentInfo } from "@shared/schema";
 
 interface ValidatorsResponse {
@@ -32,6 +33,24 @@ interface AmendmentsResponse {
 interface ValidatorInfoResponse {
   status: string;
   data: any;
+  message?: string;
+}
+
+interface UnlComparisonResponse {
+  status: string;
+  data: {
+    localCount: number;
+    unlCount: number;
+    matching: number;
+    localOnly: number;
+    unlOnly: number;
+    overlap: number;
+    details: {
+      inBoth: string[];
+      localOnly: string[];
+      unlOnly: string[];
+    };
+  };
   message?: string;
 }
 
@@ -368,6 +387,148 @@ function AmendmentTable({ amendments }: { amendments: AmendmentInfo[] }) {
   );
 }
 
+function UnlComparison({ data }: { data: UnlComparisonResponse["data"] }) {
+  const overlapColor = data.overlap >= 80 ? "text-green-400" : data.overlap >= 50 ? "text-amber-400" : "text-red-400";
+
+  const stats = [
+    { label: "Matching", value: data.matching, icon: Users, testId: "text-unl-matching" },
+    { label: "Local Only", value: data.localOnly, icon: UserMinus, testId: "text-unl-local-only" },
+    { label: "UNL Only", value: data.unlOnly, icon: UserPlus, testId: "text-unl-unl-only" },
+  ];
+
+  return (
+    <motion.div variants={itemVariants} className="space-y-4">
+      <Card className="cyber-border relative overflow-visible">
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-60" />
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-mono tracking-wider uppercase flex items-center gap-2">
+            <GitCompare className="w-4 h-4 text-primary" />
+            UNL Comparison
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex-1 min-w-[200px]">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <p className="text-[10px] tracking-widest uppercase text-muted-foreground font-mono">
+                  Overlap
+                </p>
+                <p className={`text-sm font-bold font-mono ${overlapColor}`} data-testid="text-unl-overlap">
+                  {data.overlap.toFixed(1)}%
+                </p>
+              </div>
+              <Progress value={data.overlap} className="h-2" data-testid="progress-unl-overlap" />
+            </div>
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="text-center">
+                <p className="text-lg font-bold font-mono" data-testid="text-unl-local-count">{data.localCount}</p>
+                <p className="text-[10px] tracking-widest uppercase text-muted-foreground font-mono">Local</p>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold font-mono" data-testid="text-unl-count">{data.unlCount}</p>
+                <p className="text-[10px] tracking-widest uppercase text-muted-foreground font-mono">UNL</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {stats.map((stat) => (
+              <div key={stat.label} className="flex items-center gap-2 p-2 rounded-md bg-primary/5">
+                <stat.icon className="w-4 h-4 text-primary" />
+                <div>
+                  <p className="text-lg font-bold font-mono" data-testid={stat.testId}>{stat.value}</p>
+                  <p className="text-[10px] tracking-widest uppercase text-muted-foreground font-mono">{stat.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {data.details.inBoth.length > 0 && (
+            <div>
+              <p className="text-[10px] tracking-widest uppercase text-muted-foreground font-mono mb-2">
+                In Both ({data.details.inBoth.length})
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {data.details.inBoth.slice(0, 20).map((key) => (
+                  <Tooltip key={key}>
+                    <TooltipTrigger asChild>
+                      <Badge variant="default" className="no-default-active-elevate font-mono text-[10px]" data-testid={`badge-in-both-${key.slice(0, 8)}`}>
+                        {truncateKey(key)}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="font-mono text-xs break-all max-w-[300px]">{key}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+                {data.details.inBoth.length > 20 && (
+                  <Badge variant="secondary" className="no-default-active-elevate font-mono text-[10px]">
+                    +{data.details.inBoth.length - 20} more
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
+
+          {data.details.localOnly.length > 0 && (
+            <div>
+              <p className="text-[10px] tracking-widest uppercase text-muted-foreground font-mono mb-2">
+                Local Only ({data.details.localOnly.length})
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {data.details.localOnly.slice(0, 20).map((key) => (
+                  <Tooltip key={key}>
+                    <TooltipTrigger asChild>
+                      <Badge variant="secondary" className="no-default-active-elevate font-mono text-[10px]" data-testid={`badge-local-only-${key.slice(0, 8)}`}>
+                        {truncateKey(key)}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="font-mono text-xs break-all max-w-[300px]">{key}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+                {data.details.localOnly.length > 20 && (
+                  <Badge variant="secondary" className="no-default-active-elevate font-mono text-[10px]">
+                    +{data.details.localOnly.length - 20} more
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
+
+          {data.details.unlOnly.length > 0 && (
+            <div>
+              <p className="text-[10px] tracking-widest uppercase text-muted-foreground font-mono mb-2">
+                UNL Only ({data.details.unlOnly.length})
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {data.details.unlOnly.slice(0, 20).map((key) => (
+                  <Tooltip key={key}>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="no-default-active-elevate font-mono text-[10px]" data-testid={`badge-unl-only-${key.slice(0, 8)}`}>
+                        {truncateKey(key)}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="font-mono text-xs break-all max-w-[300px]">{key}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+                {data.details.unlOnly.length > 20 && (
+                  <Badge variant="secondary" className="no-default-active-elevate font-mono text-[10px]">
+                    +{data.details.unlOnly.length - 20} more
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
 function LoadingSkeleton() {
   return (
     <div className="space-y-6 p-6">
@@ -400,6 +561,11 @@ export default function ValidatorsPage() {
 
   const { data: validatorInfoData } = useQuery<ValidatorInfoResponse>({
     queryKey: ["/api/node/validator-info"],
+    refetchInterval: 30000,
+  });
+
+  const { data: unlComparisonData } = useQuery<UnlComparisonResponse>({
+    queryKey: ["/api/node/unl-comparison"],
     refetchInterval: 30000,
   });
 
@@ -442,6 +608,8 @@ export default function ValidatorsPage() {
 
       <ValidatorSummary validators={validators} publisherCount={publisherCount} />
       <ValidatorList validators={validators} />
+
+      {unlComparisonData?.data && <UnlComparison data={unlComparisonData.data} />}
 
       <motion.div variants={itemVariants}>
         <div className="neon-line my-2" />

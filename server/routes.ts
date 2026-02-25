@@ -285,14 +285,63 @@ export async function registerRoutes(
     }
   });
 
+  async function fireWebhooks(event: string, message: string, severity?: string) {
+    try {
+      const webhooks = await storage.getEnabledWebhooksForEvent(event);
+      for (const wh of webhooks) {
+        try {
+          if (wh.type === "discord") {
+            const color = severity === "critical" ? 0xFF0000 : severity === "warning" ? 0xFFAA00 : 0x00E6FF;
+            await fetch(wh.url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                embeds: [{
+                  title: `XRPL Node Alert — ${severity?.toUpperCase() || "INFO"}`,
+                  description: message,
+                  color,
+                  timestamp: new Date().toISOString(),
+                  footer: { text: "XRPL Node Monitor" },
+                }],
+              }),
+            });
+          } else if (wh.type === "telegram") {
+            const [botToken, chatId] = wh.url.split("|");
+            if (botToken && chatId) {
+              await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ chat_id: chatId, text: `⚠️ XRPL Alert [${severity?.toUpperCase()}]\n${message}`, parse_mode: "HTML" }),
+              });
+            }
+          } else {
+            await fetch(wh.url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ event, message, severity, timestamp: new Date().toISOString(), source: "xrpl-node-monitor" }),
+            });
+          }
+        } catch (err: any) {
+          log(`Webhook ${wh.name} failed: ${err.message}`, "webhooks");
+        }
+      }
+    } catch {}
+  }
+
+  let lastLedgerIndex = 0;
+  let lastLedgerTime = Date.now();
+
   // === T002: Metrics Snapshot Collection ===
   async function collectMetricsSnapshot() {
     try {
       const config = await storage.getConnectionConfig();
-      let nodeData: Partial<{ peerCount: number; ledgerIndex: number; closeTimeMs: number; loadFactor: number; serverState: string }> = {};
+      let nodeData: Partial<{ peerCount: number; ledgerIndex: number; closeTimeMs: number; loadFactor: number; serverState: string; nodeLatencyMs: number; reserveBase: number; reserveInc: number; baseFee: number }> = {};
 
       try {
+        const startTime = Date.now();
         const response = await sendXrplCommand(config.host, config.wsPort, { command: "server_info" });
+        const latencyMs = Date.now() - startTime;
+
         if (response.result?.info) {
           const info = response.result.info;
           nodeData = {
@@ -301,9 +350,33 @@ export async function registerRoutes(
             closeTimeMs: (info.last_close?.converge_time_s || 0) * 1000,
             loadFactor: info.load_factor || 1,
             serverState: info.server_state || "unknown",
+            nodeLatencyMs: latencyMs,
+            reserveBase: info.validated_ledger?.reserve_base_xrp || 0,
+            reserveInc: info.validated_ledger?.reserve_inc_xrp || 0,
+            baseFee: info.validated_ledger?.base_fee_xrp || 0,
           };
         }
       } catch {}
+
+      let tps: number | null = null;
+      const currentLedger = nodeData.ledgerIndex || 0;
+      const now = Date.now();
+      if (lastLedgerIndex > 0 && currentLedger > lastLedgerIndex) {
+        const elapsedSec = (now - lastLedgerTime) / 1000;
+        if (elapsedSec > 0) {
+          try {
+            const config2 = await storage.getConnectionConfig();
+            const ledgerResp = await sendXrplCommand(config2.host, config2.wsPort, {
+              command: "ledger", ledger_index: "validated", transactions: true, expand: false,
+            });
+            const txCount = Array.isArray(ledgerResp.result?.ledger?.transactions)
+              ? ledgerResp.result.ledger.transactions.length : 0;
+            tps = Math.round((txCount / Math.max(elapsedSec, 1)) * 100) / 100;
+          } catch {}
+        }
+      }
+      lastLedgerIndex = currentLedger;
+      lastLedgerTime = now;
 
       let cpuLoad = 0;
       let memPercent = 0;
@@ -322,11 +395,15 @@ export async function registerRoutes(
         closeTimeMs: nodeData.closeTimeMs ?? null,
         loadFactor: nodeData.loadFactor ?? null,
         serverState: nodeData.serverState ?? null,
+        nodeLatencyMs: nodeData.nodeLatencyMs ?? null,
+        reserveBase: nodeData.reserveBase ?? null,
+        reserveInc: nodeData.reserveInc ?? null,
+        baseFee: nodeData.baseFee ?? null,
+        tps,
       });
 
       await storage.cleanOldMetrics(7);
 
-      // === T004: Alert checking ===
       await checkAlerts(cpuLoad, memPercent, nodeData);
     } catch (err: any) {
       log(`Metrics snapshot error: ${err.message}`, "metrics");
@@ -375,13 +452,15 @@ export async function registerRoutes(
           if (!recent) {
             const direction = isAbove ? "exceeded" : "dropped below";
             const threshold = isCritical ? t.criticalValue : t.warningValue;
+            const alertMsg = `${label} ${direction} ${severity} threshold: ${currentValue.toFixed(1)} (threshold: ${threshold})`;
             await storage.createAlert({
               type: t.metric,
               severity,
-              message: `${label} ${direction} ${severity} threshold: ${currentValue.toFixed(1)} (threshold: ${threshold})`,
+              message: alertMsg,
               value: currentValue,
               threshold,
             });
+            fireWebhooks(`alert_${severity}`, alertMsg, severity).catch(() => {});
           }
         }
       }
@@ -918,6 +997,267 @@ export async function registerRoutes(
     }
 
     res.json({ summary, snapshots, alerts: recentAlerts });
+  });
+
+  // === Health Score ===
+  app.get("/api/node/health-score", async (_req: Request, res: Response) => {
+    try {
+      const config = await storage.getConnectionConfig();
+      let score = 0;
+      const components: Record<string, { score: number; max: number; detail: string }> = {};
+
+      try {
+        const startTime = Date.now();
+        const response = await sendXrplCommand(config.host, config.wsPort, { command: "server_info" });
+        const latency = Date.now() - startTime;
+
+        if (response.result?.info) {
+          const info = response.result.info;
+
+          const state = info.server_state || "disconnected";
+          const stateScore = state === "full" || state === "proposing" || state === "validating" ? 25
+            : state === "tracking" || state === "syncing" ? 15
+            : state === "connected" ? 5 : 0;
+          components.serverState = { score: stateScore, max: 25, detail: state };
+          score += stateScore;
+
+          const peers = info.peers || 0;
+          const peerScore = Math.min(peers / 20 * 20, 20);
+          components.peers = { score: Math.round(peerScore), max: 20, detail: `${peers} peers` };
+          score += peerScore;
+
+          const ledgerAge = info.validated_ledger?.age || 999;
+          const ageScore = ledgerAge <= 10 ? 20 : ledgerAge <= 30 ? 15 : ledgerAge <= 60 ? 8 : 0;
+          components.ledgerAge = { score: ageScore, max: 20, detail: `${ledgerAge}s ago` };
+          score += ageScore;
+
+          const latencyScore = latency <= 100 ? 15 : latency <= 500 ? 10 : latency <= 2000 ? 5 : 0;
+          components.latency = { score: latencyScore, max: 15, detail: `${latency}ms` };
+          score += latencyScore;
+
+          const lf = info.load_factor || 1;
+          const loadScore = lf <= 1 ? 10 : lf <= 2 ? 7 : lf <= 5 ? 3 : 0;
+          components.loadFactor = { score: loadScore, max: 10, detail: `${lf}x` };
+          score += loadScore;
+
+          const uptime = info.uptime || 0;
+          const uptimeScore = uptime >= 86400 ? 10 : uptime >= 3600 ? 7 : uptime >= 300 ? 3 : 1;
+          components.uptime = { score: uptimeScore, max: 10, detail: `${Math.floor(uptime / 3600)}h` };
+          score += uptimeScore;
+        }
+      } catch {
+        components.connection = { score: 0, max: 100, detail: "Cannot connect" };
+      }
+
+      res.json({ score: Math.round(score), components });
+    } catch (err: any) {
+      res.json({ score: 0, components: {}, error: err.message });
+    }
+  });
+
+  // === Ledger Lag ===
+  app.get("/api/node/ledger-lag", async (_req: Request, res: Response) => {
+    try {
+      const config = await storage.getConnectionConfig();
+      const [localResp, publicResp] = await Promise.allSettled([
+        sendXrplCommand(config.host, config.wsPort, { command: "server_info" }),
+        sendXrplCommandToPort("s2.ripple.com", 51233, { command: "server_info" }),
+      ]);
+
+      const localSeq = localResp.status === "fulfilled" ? localResp.value.result?.info?.validated_ledger?.seq || 0 : 0;
+      const publicSeq = publicResp.status === "fulfilled" ? publicResp.value.result?.info?.validated_ledger?.seq || 0 : 0;
+      const lag = publicSeq > 0 && localSeq > 0 ? publicSeq - localSeq : null;
+
+      res.json({ localLedger: localSeq, publicLedger: publicSeq, lag, synced: lag !== null && Math.abs(lag) <= 3 });
+    } catch (err: any) {
+      res.json({ localLedger: 0, publicLedger: 0, lag: null, synced: false, error: err.message });
+    }
+  });
+
+  // === TPS ===
+  app.get("/api/node/tps", async (_req: Request, res: Response) => {
+    const snapshots = await storage.getMetricsHistory(1);
+    const tpsValues = snapshots.filter(s => s.tps != null && s.tps! > 0).map(s => s.tps!);
+    const current = tpsValues.length > 0 ? tpsValues[tpsValues.length - 1] : 0;
+    const avg = tpsValues.length > 0 ? tpsValues.reduce((a, b) => a + b, 0) / tpsValues.length : 0;
+    const peak = tpsValues.length > 0 ? Math.max(...tpsValues) : 0;
+    res.json({ current: Math.round(current * 100) / 100, avg: Math.round(avg * 100) / 100, peak: Math.round(peak * 100) / 100 });
+  });
+
+  // === UNL Comparison ===
+  app.get("/api/node/unl-comparison", async (_req: Request, res: Response) => {
+    try {
+      const config = await storage.getConnectionConfig();
+      let localValidators: string[] = [];
+      try {
+        const vResp = await sendXrplCommand(config.host, config.adminPort, { command: "validators" });
+        if (vResp.result) {
+          const vList = vResp.result.trusted_validators || vResp.result.validators || [];
+          localValidators = vList.map((v: any) => v.validation_public_key || v.pubkey_validator || "").filter(Boolean);
+        }
+      } catch {}
+
+      let recommendedUNL: string[] = [];
+      try {
+        const unlResp = await fetch("https://vl.ripple.com", { signal: AbortSignal.timeout(5000) });
+        if (unlResp.ok) {
+          const unlData = await unlResp.json();
+          if (unlData.validators) {
+            recommendedUNL = unlData.validators.map((v: any) => v.validation_public_key || "").filter(Boolean);
+          }
+        }
+      } catch {}
+
+      const localSet = new Set(localValidators);
+      const unlSet = new Set(recommendedUNL);
+      const inBoth = localValidators.filter(v => unlSet.has(v));
+      const localOnly = localValidators.filter(v => !unlSet.has(v));
+      const unlOnly = recommendedUNL.filter(v => !localSet.has(v));
+
+      res.json({
+        localCount: localValidators.length,
+        unlCount: recommendedUNL.length,
+        matching: inBoth.length,
+        localOnly: localOnly.length,
+        unlOnly: unlOnly.length,
+        overlap: localValidators.length > 0 ? Math.round((inBoth.length / localValidators.length) * 100) : 0,
+        details: { inBoth: inBoth.slice(0, 10), localOnly: localOnly.slice(0, 10), unlOnly: unlOnly.slice(0, 10) },
+      });
+    } catch (err: any) {
+      res.json({ error: err.message });
+    }
+  });
+
+  // === Peer Locations ===
+  app.get("/api/node/peer-locations", async (_req: Request, res: Response) => {
+    try {
+      const config = await storage.getConnectionConfig();
+      const response = await sendXrplCommand(config.host, config.adminPort, { command: "peers" });
+      if (!response.result?.peers) return res.json({ locations: [] });
+
+      const ips = response.result.peers
+        .map((p: any) => {
+          const addr = p.address || "";
+          const ip = addr.split(":")[0];
+          return ip && !ip.startsWith("10.") && !ip.startsWith("192.168.") && !ip.startsWith("172.") && ip !== "127.0.0.1" ? ip : null;
+        })
+        .filter(Boolean);
+
+      const uniqueIps = [...new Set(ips)] as string[];
+      const locations: { ip: string; lat: number; lon: number; country: string; city: string; count: number }[] = [];
+
+      for (const ip of uniqueIps.slice(0, 50)) {
+        try {
+          const geoResp = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon`, { signal: AbortSignal.timeout(3000) });
+          if (geoResp.ok) {
+            const geo = await geoResp.json();
+            if (geo.status === "success") {
+              const count = ips.filter((i: string) => i === ip).length;
+              locations.push({ ip, lat: geo.lat, lon: geo.lon, country: geo.country, city: geo.city, count });
+            }
+          }
+          await new Promise(r => setTimeout(r, 200));
+        } catch {}
+      }
+
+      res.json({ locations, totalPeers: response.result.peers.length, geolocated: locations.length });
+    } catch (err: any) {
+      res.json({ locations: [], error: err.message });
+    }
+  });
+
+  // === Webhook CRUD ===
+  app.get("/api/webhooks", async (_req: Request, res: Response) => {
+    const configs = await storage.getWebhookConfigs();
+    res.json(configs);
+  });
+
+  app.post("/api/webhooks", async (req: Request, res: Response) => {
+    const { name, type, url, events } = req.body;
+    if (!name || !url) return res.status(400).json({ message: "Name and URL are required" });
+    const config = await storage.createWebhookConfig({
+      name,
+      type: type || "discord",
+      url,
+      enabled: true,
+      events: events || ["alert_critical", "alert_warning"],
+    });
+    res.json(config);
+  });
+
+  app.put("/api/webhooks/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const result = await storage.updateWebhookConfig(id, req.body);
+    if (!result) return res.status(404).json({ message: "Webhook not found" });
+    res.json(result);
+  });
+
+  app.delete("/api/webhooks/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const deleted = await storage.deleteWebhookConfig(id);
+    if (!deleted) return res.status(404).json({ message: "Webhook not found" });
+    res.json({ success: true });
+  });
+
+  app.post("/api/webhooks/:id/test", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const wh = await storage.getWebhookConfig(id);
+    if (!wh) return res.status(404).json({ message: "Webhook not found" });
+    try {
+      if (wh.type === "discord") {
+        await fetch(wh.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            embeds: [{ title: "XRPL Node Monitor — Test", description: "This is a test notification from your XRPL Node Monitor.", color: 0x00E6FF, timestamp: new Date().toISOString() }],
+          }),
+        });
+      } else {
+        await fetch(wh.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event: "test", message: "Test notification from XRPL Node Monitor", timestamp: new Date().toISOString() }),
+        });
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.json({ success: false, error: err.message });
+    }
+  });
+
+  // === Multi-node comparison ===
+  app.get("/api/nodes/compare", async (_req: Request, res: Response) => {
+    const nodes = await storage.getSavedNodes();
+    const results = await Promise.allSettled(
+      nodes.map(async (node) => {
+        try {
+          const startTime = Date.now();
+          const response = await sendXrplCommandToPort(node.host, node.wsPort, { command: "server_info" });
+          const latency = Date.now() - startTime;
+          if (response.result?.info) {
+            const info = response.result.info;
+            return {
+              id: node.id,
+              name: node.name,
+              host: node.host,
+              status: "connected",
+              latency,
+              serverState: info.server_state,
+              peers: info.peers,
+              ledgerSeq: info.validated_ledger?.seq,
+              ledgerAge: info.validated_ledger?.age,
+              uptime: info.uptime,
+              buildVersion: info.build_version,
+              loadFactor: info.load_factor,
+            };
+          }
+          return { id: node.id, name: node.name, host: node.host, status: "error" };
+        } catch {
+          return { id: node.id, name: node.name, host: node.host, status: "disconnected" };
+        }
+      })
+    );
+    res.json(results.map(r => r.status === "fulfilled" ? r.value : { status: "error" }));
   });
 
   return httpServer;

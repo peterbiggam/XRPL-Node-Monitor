@@ -13,7 +13,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { motion } from "framer-motion";
-import { Cpu, MemoryStick, Users, Clock, Gauge, Download } from "lucide-react";
+import { Cpu, MemoryStick, Users, Clock, Gauge, Download, Activity, Zap, DollarSign } from "lucide-react";
 import type { MetricsSnapshot } from "@shared/schema";
 
 const TIME_RANGES = [
@@ -100,6 +100,33 @@ const CHARTS: ChartConfig[] = [
     color: "hsl(40, 95%, 55%)",
     glowColor: "rgba(255, 190, 50, 0.3)",
     unit: "",
+  },
+];
+
+const NEW_CHARTS: ChartConfig[] = [
+  {
+    title: "NODE LATENCY",
+    icon: Activity,
+    dataKey: "nodeLatencyMs",
+    color: "hsl(200, 100%, 60%)",
+    glowColor: "rgba(50, 180, 255, 0.3)",
+    unit: "ms",
+  },
+  {
+    title: "TRANSACTIONS PER SECOND",
+    icon: Zap,
+    dataKey: "tps",
+    color: "hsl(60, 90%, 55%)",
+    glowColor: "rgba(240, 230, 50, 0.3)",
+    unit: "",
+  },
+  {
+    title: "BASE FEE",
+    icon: DollarSign,
+    dataKey: "baseFee",
+    color: "hsl(150, 80%, 50%)",
+    glowColor: "rgba(50, 210, 130, 0.3)",
+    unit: " drops",
   },
 ];
 
@@ -206,6 +233,165 @@ function MetricsChart({ config, data, hours }: {
               />
             </AreaChart>
           </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function getLatencyColor(latencyMs: number): string {
+  if (latencyMs <= 50) return "hsl(120, 80%, 40%)";
+  if (latencyMs <= 100) return "hsl(120, 60%, 35%)";
+  if (latencyMs <= 200) return "hsl(80, 70%, 40%)";
+  if (latencyMs <= 500) return "hsl(45, 90%, 45%)";
+  if (latencyMs <= 1000) return "hsl(30, 90%, 45%)";
+  return "hsl(0, 80%, 45%)";
+}
+
+function getLatencyLabel(latencyMs: number): string {
+  if (latencyMs <= 50) return "Excellent";
+  if (latencyMs <= 100) return "Good";
+  if (latencyMs <= 200) return "Fair";
+  if (latencyMs <= 500) return "Slow";
+  if (latencyMs <= 1000) return "Poor";
+  return "Critical";
+}
+
+interface HeatmapBucket {
+  timeLabel: string;
+  avgLatency: number;
+  count: number;
+}
+
+function buildHeatmapBuckets(data: MetricsSnapshot[], hours: number): HeatmapBucket[] {
+  if (!data.length) return [];
+
+  const bucketMinutes = hours <= 1 ? 5 : hours <= 6 ? 15 : hours <= 24 ? 30 : 120;
+  const bucketMs = bucketMinutes * 60 * 1000;
+
+  const now = Date.now();
+  const start = now - hours * 60 * 60 * 1000;
+  const bucketCount = Math.ceil((now - start) / bucketMs);
+
+  const buckets: { sum: number; count: number; time: number }[] = Array.from(
+    { length: bucketCount },
+    (_, i) => ({ sum: 0, count: 0, time: start + i * bucketMs })
+  );
+
+  for (const snapshot of data) {
+    if (snapshot.nodeLatencyMs == null) continue;
+    const ts = new Date(snapshot.timestamp as unknown as string).getTime();
+    const idx = Math.floor((ts - start) / bucketMs);
+    if (idx >= 0 && idx < buckets.length) {
+      buckets[idx].sum += snapshot.nodeLatencyMs;
+      buckets[idx].count++;
+    }
+  }
+
+  return buckets.map((b) => {
+    const d = new Date(b.time);
+    let timeLabel: string;
+    if (hours <= 24) {
+      timeLabel = d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+    } else {
+      timeLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " +
+        d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+    }
+    return {
+      timeLabel,
+      avgLatency: b.count > 0 ? b.sum / b.count : -1,
+      count: b.count,
+    };
+  });
+}
+
+function LatencyHeatmap({ data, hours }: { data: MetricsSnapshot[]; hours: number }) {
+  const buckets = buildHeatmapBuckets(data, hours);
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
+  if (buckets.length === 0 || buckets.every((b) => b.avgLatency < 0)) {
+    return (
+      <Card className="cyber-border">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+          <CardTitle className="text-xs tracking-widest uppercase font-mono flex items-center gap-2 flex-wrap">
+            <Activity className="w-4 h-4" style={{ color: "hsl(200, 100%, 60%)" }} />
+            LATENCY HEATMAP
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 flex items-center justify-center min-h-[120px]">
+          <span className="text-muted-foreground text-xs font-mono" data-testid="text-heatmap-empty">NO LATENCY DATA AVAILABLE</span>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const legendItems = [
+    { label: "< 50ms", color: getLatencyColor(25) },
+    { label: "50-100ms", color: getLatencyColor(75) },
+    { label: "100-200ms", color: getLatencyColor(150) },
+    { label: "200-500ms", color: getLatencyColor(300) },
+    { label: "500ms-1s", color: getLatencyColor(750) },
+    { label: "> 1s", color: getLatencyColor(1500) },
+  ];
+
+  return (
+    <Card className="cyber-border" data-testid="card-latency-heatmap">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+        <CardTitle className="text-xs tracking-widest uppercase font-mono flex items-center gap-2 flex-wrap">
+          <Activity className="w-4 h-4" style={{ color: "hsl(200, 100%, 60%)" }} />
+          LATENCY HEATMAP
+        </CardTitle>
+        <div className="flex items-center gap-2 flex-wrap">
+          {legendItems.map((item) => (
+            <div key={item.label} className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-md" style={{ backgroundColor: item.color }} />
+              <span className="text-[10px] font-mono text-muted-foreground">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </CardHeader>
+      <CardContent className="p-4">
+        <div className="relative">
+          <div className="flex flex-wrap gap-1" data-testid="heatmap-grid">
+            {buckets.map((bucket, i) => (
+              <div
+                key={i}
+                className="relative rounded-md transition-transform duration-150"
+                style={{
+                  width: "clamp(16px, 2.5vw, 28px)",
+                  height: "clamp(16px, 2.5vw, 28px)",
+                  backgroundColor: bucket.avgLatency >= 0 ? getLatencyColor(bucket.avgLatency) : "hsl(var(--muted))",
+                  opacity: bucket.avgLatency >= 0 ? 1 : 0.2,
+                  boxShadow: bucket.avgLatency >= 0 ? `0 0 6px ${getLatencyColor(bucket.avgLatency)}40` : "none",
+                }}
+                onMouseEnter={() => setHoveredIdx(i)}
+                onMouseLeave={() => setHoveredIdx(null)}
+                data-testid={`heatmap-cell-${i}`}
+              />
+            ))}
+          </div>
+          {hoveredIdx !== null && buckets[hoveredIdx] && (
+            <div
+              className="absolute z-50 bg-card border border-border rounded-md p-2 text-xs font-mono pointer-events-none"
+              style={{
+                top: "-60px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                boxShadow: "0 0 15px rgba(0,0,0,0.4)",
+              }}
+              data-testid="heatmap-tooltip"
+            >
+              <p className="text-muted-foreground">{buckets[hoveredIdx].timeLabel}</p>
+              {buckets[hoveredIdx].avgLatency >= 0 ? (
+                <>
+                  <p className="text-foreground">{buckets[hoveredIdx].avgLatency.toFixed(1)}ms avg</p>
+                  <p className="text-muted-foreground">{getLatencyLabel(buckets[hoveredIdx].avgLatency)} ({buckets[hoveredIdx].count} samples)</p>
+                </>
+              ) : (
+                <p className="text-muted-foreground">No data</p>
+              )}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -320,6 +506,40 @@ export default function HistoryPage() {
             </motion.div>
           ))}
         </motion.div>
+      )}
+
+      {!isLoading && data && data.length > 0 && (
+        <>
+          <motion.div variants={itemVariants}>
+            <LatencyHeatmap data={data} hours={hours} />
+          </motion.div>
+
+          <motion.div variants={itemVariants}>
+            <h2
+              className="text-sm font-bold tracking-widest font-mono text-glow uppercase"
+              data-testid="text-extended-metrics-title"
+            >
+              EXTENDED METRICS
+            </h2>
+          </motion.div>
+
+          <motion.div
+            className="grid grid-cols-1 xl:grid-cols-2 gap-4"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+          >
+            {NEW_CHARTS.map((config) => (
+              <motion.div key={config.dataKey} variants={itemVariants}>
+                <MetricsChart
+                  config={config}
+                  data={data}
+                  hours={hours}
+                />
+              </motion.div>
+            ))}
+          </motion.div>
+        </>
       )}
 
       {!isLoading && (!data || data.length === 0) && (

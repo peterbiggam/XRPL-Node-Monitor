@@ -4,13 +4,21 @@ import { StatusIndicator } from "@/components/status-indicator";
 import { SparklineChart } from "@/components/sparkline-chart";
 import { Card, CardContent } from "@/components/ui/card";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Server,
   BookOpen,
   Globe,
   Zap,
   AlertTriangle,
+  Activity,
+  Layers,
+  ShieldCheck,
 } from "lucide-react";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect, useId } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { NodeInfo, LedgerInfo } from "@shared/schema";
 
@@ -24,6 +32,30 @@ interface LedgerResponse {
   status: string;
   data: LedgerInfo | null;
   message?: string;
+}
+
+interface HealthScoreComponent {
+  score: number;
+  max: number;
+  detail: string;
+}
+
+interface HealthScoreResponse {
+  score: number;
+  components: Record<string, HealthScoreComponent>;
+}
+
+interface TpsResponse {
+  current: number;
+  avg: number;
+  peak: number;
+}
+
+interface LedgerLagResponse {
+  localLedger: number;
+  publicLedger: number;
+  lag: number;
+  synced: boolean;
 }
 
 function formatUptime(seconds: number): string {
@@ -65,6 +97,226 @@ const itemVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
 };
+
+function getHealthColor(score: number): string {
+  if (score >= 80) return "hsl(142, 76%, 46%)";
+  if (score >= 50) return "hsl(45, 93%, 47%)";
+  return "hsl(0, 84%, 50%)";
+}
+
+function getHealthGlow(score: number): string {
+  if (score >= 80) return "rgba(34, 197, 94, 0.6)";
+  if (score >= 50) return "rgba(234, 179, 8, 0.6)";
+  return "rgba(239, 68, 68, 0.8)";
+}
+
+function getHealthLabel(score: number): string {
+  if (score >= 80) return "HEALTHY";
+  if (score >= 50) return "DEGRADED";
+  return "CRITICAL";
+}
+
+function HealthScoreGauge({ data }: { data: HealthScoreResponse }) {
+  const size = 180;
+  const strokeWidth = 12;
+  const radius = (size - strokeWidth - 8) / 2;
+  const outerRadius = (size - 4) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const score = Math.min(100, Math.max(0, data.score));
+  const offset = circumference - (score / 100) * circumference;
+  const color = getHealthColor(score);
+  const glowColor = getHealthGlow(score);
+  const cx = size / 2;
+  const cy = size / 2;
+  const uniqueId = useId().replace(/:/g, "");
+
+  const [displayValue, setDisplayValue] = useState(0);
+  const animRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const prevValueRef = useRef(0);
+
+  useEffect(() => {
+    const from = prevValueRef.current;
+    const to = score;
+    const duration = 700;
+    startTimeRef.current = null;
+
+    const animate = (timestamp: number) => {
+      if (!startTimeRef.current) startTimeRef.current = timestamp;
+      const elapsed = timestamp - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayValue(from + (to - from) * eased);
+
+      if (progress < 1) {
+        animRef.current = requestAnimationFrame(animate);
+      } else {
+        prevValueRef.current = to;
+      }
+    };
+
+    animRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, [score]);
+
+  const tickCount = 24;
+  const ticks = Array.from({ length: tickCount }, (_, i) => {
+    const angle = (i / tickCount) * 360 - 90;
+    const rad = (angle * Math.PI) / 180;
+    const innerTick = outerRadius - 6;
+    const outerTick = outerRadius - 2;
+    const isMajor = i % 6 === 0;
+    return {
+      x1: cx + (isMajor ? innerTick - 3 : innerTick) * Math.cos(rad),
+      y1: cy + (isMajor ? innerTick - 3 : innerTick) * Math.sin(rad),
+      x2: cx + outerTick * Math.cos(rad),
+      y2: cy + outerTick * Math.sin(rad),
+      isMajor,
+    };
+  });
+
+  const components = Object.entries(data.components);
+
+  return (
+    <Card className="cyber-border overflow-visible" data-testid="card-health-score">
+      <div className="absolute top-0 left-0 right-0 h-[2px] overflow-hidden rounded-t-md">
+        <div className="h-full w-full bg-gradient-to-r from-transparent via-primary to-transparent animate-data-flow" />
+      </div>
+      <CardContent className="p-4 pt-5">
+        <div className="flex items-center gap-2 mb-4">
+          <div
+            className="flex items-center justify-center w-9 h-9 bg-primary/10 text-primary"
+            style={{ clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)" }}
+          >
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <span className="text-sm text-muted-foreground uppercase tracking-wider font-mono">
+            Health Score
+          </span>
+        </div>
+
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative" style={{ width: size, height: size }}>
+            <svg
+              width={size}
+              height={size}
+              viewBox={`0 0 ${size} ${size}`}
+              className="transform -rotate-90"
+              data-testid="health-gauge-svg"
+            >
+              <defs>
+                <filter id={`health-glow-${uniqueId}`} x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+              </defs>
+
+              <circle cx={cx} cy={cy} r={outerRadius} fill="none" stroke="hsl(var(--border))" strokeWidth={1} opacity={0.3} />
+
+              {ticks.map((tick, i) => (
+                <line
+                  key={i}
+                  x1={tick.x1}
+                  y1={tick.y1}
+                  x2={tick.x2}
+                  y2={tick.y2}
+                  stroke="hsl(var(--muted-foreground))"
+                  strokeWidth={tick.isMajor ? 1.5 : 0.5}
+                  opacity={tick.isMajor ? 0.5 : 0.25}
+                />
+              ))}
+
+              <circle cx={cx} cy={cy} r={radius} fill="none" stroke="hsl(var(--muted))" strokeWidth={strokeWidth} opacity={0.4} />
+
+              <circle
+                cx={cx}
+                cy={cy}
+                r={radius}
+                fill="none"
+                stroke={color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={circumference}
+                strokeDashoffset={offset}
+                strokeLinecap="round"
+                className="transition-all duration-700 ease-out"
+                filter={`url(#health-glow-${uniqueId})`}
+              />
+
+              <circle
+                cx={cx}
+                cy={cy}
+                r={radius}
+                fill="none"
+                stroke={glowColor}
+                strokeWidth={strokeWidth + 6}
+                strokeDasharray={circumference}
+                strokeDashoffset={offset}
+                strokeLinecap="round"
+                opacity={0.15}
+                className="transition-all duration-700 ease-out"
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span
+                className="text-3xl font-bold font-mono text-glow"
+                style={{ color }}
+                data-testid="text-health-score"
+              >
+                {Math.round(displayValue)}
+              </span>
+              <span
+                className="text-xs font-mono uppercase tracking-widest mt-1"
+                style={{ color, textShadow: `0 0 10px ${glowColor}` }}
+                data-testid="text-health-label"
+              >
+                {getHealthLabel(score)}
+              </span>
+            </div>
+          </div>
+
+          {components.length > 0 && (
+            <div className="w-full space-y-2" data-testid="health-breakdown">
+              <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                Score Breakdown
+              </p>
+              {components.map(([name, comp]) => {
+                const pct = comp.max > 0 ? (comp.score / comp.max) * 100 : 0;
+                const barColor = getHealthColor(pct);
+                return (
+                  <Tooltip key={name}>
+                    <TooltipTrigger asChild>
+                      <div className="space-y-1 cursor-default" data-testid={`health-component-${name}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-mono text-muted-foreground capitalize truncate">
+                            {name.replace(/_/g, " ")}
+                          </span>
+                          <span className="text-xs font-mono" style={{ color: barColor }}>
+                            {comp.score}/{comp.max}
+                          </span>
+                        </div>
+                        <div className="h-1 bg-muted/40 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%`, backgroundColor: barColor }}
+                          />
+                        </div>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="font-mono text-xs">
+                      {comp.detail}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function DashboardSkeleton() {
   return (
@@ -198,6 +450,21 @@ export default function DashboardPage() {
 
   const { data: ledgerResp, isLoading: ledgerLoading } = useQuery<LedgerResponse>({
     queryKey: ["/api/node/ledger"],
+    refetchInterval: 5000,
+  });
+
+  const { data: healthData } = useQuery<HealthScoreResponse>({
+    queryKey: ["/api/node/health-score"],
+    refetchInterval: 10000,
+  });
+
+  const { data: tpsData } = useQuery<TpsResponse>({
+    queryKey: ["/api/node/tps"],
+    refetchInterval: 5000,
+  });
+
+  const { data: lagData } = useQuery<LedgerLagResponse>({
+    queryKey: ["/api/node/ledger-lag"],
     refetchInterval: 5000,
   });
 
@@ -357,6 +624,62 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground font-mono">No performance data</p>
+                )}
+              </MetricCard>
+            </motion.div>
+          </motion.div>
+
+          <motion.div
+            variants={containerVariants}
+            className="grid grid-cols-1 md:grid-cols-3 gap-4"
+          >
+            {healthData && (
+              <motion.div variants={itemVariants} className="md:row-span-2">
+                <HealthScoreGauge data={healthData} />
+              </motion.div>
+            )}
+
+            <motion.div variants={itemVariants}>
+              <MetricCard
+                icon={Activity}
+                label="TPS"
+                value={tpsData ? tpsData.current.toFixed(1) : "--"}
+                subValue={tpsData ? `Avg: ${tpsData.avg.toFixed(1)} tx/s` : "Awaiting data"}
+                testId="card-tps"
+              >
+                {tpsData && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-mono" data-testid="text-tps-peak">
+                      Peak: {tpsData.peak.toFixed(1)} tx/s
+                    </p>
+                  </div>
+                )}
+              </MetricCard>
+            </motion.div>
+
+            <motion.div variants={itemVariants}>
+              <MetricCard
+                icon={Layers}
+                label="Ledger Lag"
+                value={lagData ? `${lagData.lag}` : "--"}
+                subValue={lagData ? (lagData.synced ? "Fully Synced" : "Out of Sync") : "Awaiting data"}
+                testId="card-ledger-lag"
+              >
+                {lagData && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <StatusIndicator
+                        status={lagData.synced ? "synced" : "syncing"}
+                        label={lagData.synced ? "Synced" : "Lagging"}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground font-mono" data-testid="text-local-ledger">
+                      Local: {formatNumber(lagData.localLedger)}
+                    </p>
+                    <p className="text-xs text-muted-foreground font-mono" data-testid="text-public-ledger">
+                      Public: {formatNumber(lagData.publicLedger)}
+                    </p>
+                  </div>
                 )}
               </MetricCard>
             </motion.div>

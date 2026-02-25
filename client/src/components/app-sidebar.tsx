@@ -17,6 +17,7 @@ import {
   Search,
   Shield,
   Brain,
+  GitCompare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -52,6 +53,7 @@ const navItems = [
   { title: "Transactions", url: "/transactions", icon: ArrowRightLeft },
   { title: "Validators", url: "/validators", icon: Shield },
   { title: "AI Analysis", url: "/ai", icon: Brain },
+  { title: "Comparison", url: "/comparison", icon: GitCompare },
   { title: "System Health", url: "/system", icon: Activity },
   { title: "Settings", url: "/settings", icon: Settings },
 ];

@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Users, ArrowDownLeft, ArrowUpRight, Globe, Clock, Network, LayoutList } from "lucide-react";
+import { Users, ArrowDownLeft, ArrowUpRight, Globe, Clock, Network, LayoutList, MapPin } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { PeerInfo } from "@shared/schema";
@@ -708,6 +708,402 @@ function PeerTable({ peers }: { peers: PeerInfo[] }) {
   );
 }
 
+interface PeerLocation {
+  ip: string;
+  lat: number;
+  lon: number;
+  country: string;
+  city: string;
+  count: number;
+}
+
+interface PeerLocationsResponse {
+  locations: PeerLocation[];
+  totalPeers: number;
+  geolocated: number;
+}
+
+function projectLatLon(lat: number, lon: number, width: number, height: number): { x: number; y: number } {
+  const x = ((lon + 180) / 360) * width;
+  const y = ((90 - lat) / 180) * height;
+  return { x, y };
+}
+
+function SimplifiedWorldMap({ width, height }: { width: number; height: number }) {
+  const continentPaths = useMemo(() => {
+    const w = width;
+    const h = height;
+    const p = (lat: number, lon: number) => projectLatLon(lat, lon, w, h);
+
+    const northAmerica = (() => {
+      const pts = [
+        p(72, -168), p(71, -156), p(70, -141), p(69, -130), p(66, -123),
+        p(60, -140), p(58, -137), p(55, -130), p(50, -127), p(48, -124),
+        p(42, -124), p(35, -120), p(30, -117), p(25, -110), p(20, -105),
+        p(15, -92), p(18, -88), p(21, -87), p(25, -80), p(30, -82),
+        p(27, -80), p(25, -78), p(30, -81), p(35, -76), p(40, -74),
+        p(42, -70), p(45, -67), p(47, -60), p(50, -56), p(52, -56),
+        p(55, -60), p(58, -64), p(60, -65), p(63, -68), p(66, -72),
+        p(70, -80), p(72, -95), p(75, -95), p(78, -90), p(80, -85),
+        p(82, -70), p(83, -60), p(80, -65), p(76, -72), p(73, -80),
+        p(72, -100), p(72, -130), p(72, -150),
+      ];
+      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
+    })();
+
+    const southAmerica = (() => {
+      const pts = [
+        p(12, -72), p(10, -67), p(8, -60), p(5, -52), p(2, -50),
+        p(-2, -44), p(-5, -35), p(-10, -37), p(-15, -39), p(-18, -40),
+        p(-22, -41), p(-25, -48), p(-30, -51), p(-35, -57), p(-40, -62),
+        p(-45, -66), p(-50, -70), p(-53, -72), p(-55, -68), p(-52, -65),
+        p(-48, -65), p(-45, -72), p(-40, -72), p(-35, -72), p(-30, -72),
+        p(-25, -70), p(-20, -70), p(-15, -76), p(-10, -78), p(-5, -80),
+        p(0, -80), p(5, -77), p(10, -75),
+      ];
+      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
+    })();
+
+    const europe = (() => {
+      const pts = [
+        p(71, -25), p(70, -10), p(65, 0), p(60, 5), p(55, 8),
+        p(52, 5), p(50, 2), p(48, -5), p(44, -9), p(36, -6),
+        p(36, -5), p(38, 0), p(40, 3), p(42, 10), p(44, 12),
+        p(45, 14), p(42, 16), p(40, 18), p(38, 22), p(36, 24),
+        p(35, 26), p(38, 28), p(40, 26), p(42, 28), p(44, 28),
+        p(46, 30), p(48, 24), p(50, 20), p(52, 18), p(55, 20),
+        p(58, 18), p(60, 20), p(62, 22), p(65, 25), p(68, 28),
+        p(70, 30), p(72, 28), p(73, 20), p(72, 10), p(71, 0),
+      ];
+      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
+    })();
+
+    const africa = (() => {
+      const pts = [
+        p(37, -10), p(35, -5), p(32, 0), p(30, 10), p(32, 32),
+        p(30, 33), p(28, 34), p(22, 37), p(15, 42), p(12, 44),
+        p(10, 50), p(5, 42), p(0, 42), p(-5, 40), p(-10, 40),
+        p(-15, 38), p(-20, 35), p(-25, 33), p(-28, 28), p(-30, 30),
+        p(-34, 26), p(-34, 18), p(-30, 17), p(-25, 15), p(-20, 12),
+        p(-15, 12), p(-10, 14), p(-5, 10), p(0, 10), p(5, 5),
+        p(5, 0), p(8, -5), p(10, -10), p(15, -17), p(20, -17),
+        p(25, -15), p(30, -10), p(35, -8),
+      ];
+      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
+    })();
+
+    const asia = (() => {
+      const pts = [
+        p(72, 30), p(70, 50), p(68, 70), p(65, 90), p(62, 100),
+        p(60, 110), p(55, 120), p(50, 130), p(45, 135), p(40, 140),
+        p(35, 140), p(30, 122), p(25, 120), p(22, 115), p(20, 110),
+        p(15, 100), p(10, 100), p(8, 98), p(5, 95), p(0, 95),
+        p(-5, 105), p(-8, 115), p(-5, 120), p(0, 110), p(5, 105),
+        p(8, 100), p(10, 105), p(15, 108), p(20, 107), p(22, 105),
+        p(25, 100), p(28, 95), p(25, 90), p(22, 85), p(18, 80),
+        p(15, 75), p(20, 72), p(25, 68), p(28, 62), p(25, 57),
+        p(22, 55), p(25, 50), p(28, 48), p(30, 45), p(35, 40),
+        p(38, 35), p(40, 32), p(42, 30), p(45, 32), p(48, 35),
+        p(50, 40), p(52, 45), p(55, 50), p(58, 55), p(60, 60),
+        p(62, 65), p(65, 70), p(68, 60), p(70, 45), p(72, 35),
+      ];
+      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
+    })();
+
+    const australia = (() => {
+      const pts = [
+        p(-12, 130), p(-15, 125), p(-20, 118), p(-25, 115),
+        p(-30, 115), p(-32, 117), p(-35, 118), p(-38, 145),
+        p(-37, 150), p(-35, 152), p(-30, 153), p(-25, 152),
+        p(-20, 148), p(-15, 145), p(-12, 140), p(-10, 135),
+      ];
+      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
+    })();
+
+    return [northAmerica, southAmerica, europe, africa, asia, australia];
+  }, [width, height]);
+
+  return (
+    <g>
+      {continentPaths.map((d, i) => (
+        <path
+          key={i}
+          d={d}
+          fill="hsl(185, 30%, 12%)"
+          stroke="hsl(185, 100%, 50%)"
+          strokeWidth="0.5"
+          strokeOpacity="0.3"
+          fillOpacity="0.6"
+        />
+      ))}
+    </g>
+  );
+}
+
+function PeerGeoMap() {
+  const { data, isLoading } = useQuery<PeerLocationsResponse>({
+    queryKey: ["/api/node/peer-locations"],
+    refetchInterval: 30000,
+  });
+
+  const [hoveredPeer, setHoveredPeer] = useState<PeerLocation | null>(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  const mapWidth = 800;
+  const mapHeight = 450;
+
+  const topCountries = useMemo(() => {
+    if (!data?.locations) return [];
+    const countryMap: Record<string, number> = {};
+    data.locations.forEach(loc => {
+      countryMap[loc.country] = (countryMap[loc.country] || 0) + loc.count;
+    });
+    return Object.entries(countryMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6);
+  }, [data]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const scaleX = mapWidth / rect.width;
+    const scaleY = mapHeight / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
+
+    let found: PeerLocation | null = null;
+    if (data?.locations) {
+      for (const loc of data.locations) {
+        const { x, y } = projectLatLon(loc.lat, loc.lon, mapWidth, mapHeight);
+        const dx = mx - x;
+        const dy = my - y;
+        if (Math.sqrt(dx * dx + dy * dy) < 12) {
+          found = loc;
+          setTooltipPos({ x: e.clientX - (svg.getBoundingClientRect().left), y: e.clientY - (svg.getBoundingClientRect().top) });
+          break;
+        }
+      }
+    }
+    setHoveredPeer(found);
+  }, [data]);
+
+  if (isLoading) {
+    return (
+      <motion.div variants={itemVariants}>
+        <Card className="cyber-border relative overflow-visible">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-60" />
+          <CardContent className="py-8">
+            <Skeleton className="h-[400px] w-full cyber-glow" />
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  }
+
+  const locations = data?.locations || [];
+
+  return (
+    <motion.div variants={itemVariants} className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="cyber-border relative overflow-visible">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-60" />
+          <CardContent className="flex items-center gap-3 py-4">
+            <div className="p-2 rounded-md bg-primary/10 cyber-border">
+              <Users className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Peers</p>
+              <p className="text-2xl font-semibold font-mono text-primary text-glow" data-testid="text-map-total-peers">
+                {data?.totalPeers || 0}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="cyber-border relative overflow-visible">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-60" />
+          <CardContent className="flex items-center gap-3 py-4">
+            <div className="p-2 rounded-md bg-primary/10 cyber-border">
+              <MapPin className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Geolocated</p>
+              <p className="text-2xl font-semibold font-mono text-primary text-glow" data-testid="text-map-geolocated">
+                {data?.geolocated || 0}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="cyber-border relative overflow-visible">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-60" />
+          <CardContent className="flex items-center gap-3 py-4">
+            <div className="p-2 rounded-md bg-primary/10 cyber-border">
+              <Globe className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Countries</p>
+              <p className="text-2xl font-semibold font-mono text-primary text-glow" data-testid="text-map-countries">
+                {topCountries.length}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="cyber-border relative overflow-visible">
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-60" />
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium tracking-wide uppercase">Peer Geolocation Map</CardTitle>
+          <Globe className="w-4 h-4 text-primary/60" />
+        </CardHeader>
+        <CardContent className="relative">
+          <svg
+            ref={svgRef}
+            width={mapWidth}
+            height={mapHeight}
+            className="w-full"
+            viewBox={`0 0 ${mapWidth} ${mapHeight}`}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={() => setHoveredPeer(null)}
+            data-testid="svg-peer-map"
+            style={{ background: "hsl(225, 30%, 3%)" }}
+          >
+            <defs>
+              <filter id="peer-glow" x="-100%" y="-100%" width="300%" height="300%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              <radialGradient id="peer-dot-gradient" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="hsl(185, 100%, 60%)" stopOpacity="1" />
+                <stop offset="100%" stopColor="hsl(185, 100%, 50%)" stopOpacity="0.3" />
+              </radialGradient>
+            </defs>
+
+            {Array.from({ length: 7 }).map((_, i) => (
+              <line
+                key={`grid-h-${i}`}
+                x1={0}
+                y1={(i * mapHeight) / 6}
+                x2={mapWidth}
+                y2={(i * mapHeight) / 6}
+                stroke="hsl(185, 100%, 50%)"
+                strokeOpacity="0.04"
+                strokeDasharray="2 4"
+              />
+            ))}
+            {Array.from({ length: 13 }).map((_, i) => (
+              <line
+                key={`grid-v-${i}`}
+                x1={(i * mapWidth) / 12}
+                y1={0}
+                x2={(i * mapWidth) / 12}
+                y2={mapHeight}
+                stroke="hsl(185, 100%, 50%)"
+                strokeOpacity="0.04"
+                strokeDasharray="2 4"
+              />
+            ))}
+
+            <SimplifiedWorldMap width={mapWidth} height={mapHeight} />
+
+            {locations.map((loc, i) => {
+              const { x, y } = projectLatLon(loc.lat, loc.lon, mapWidth, mapHeight);
+              const isHovered = hoveredPeer?.ip === loc.ip;
+              const dotRadius = Math.max(3, Math.min(8, 2 + loc.count * 1.5));
+              return (
+                <g key={`peer-${i}`} filter="url(#peer-glow)">
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={isHovered ? dotRadius + 4 : dotRadius + 2}
+                    fill="hsl(185, 100%, 50%)"
+                    fillOpacity={isHovered ? 0.15 : 0.08}
+                  />
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={isHovered ? dotRadius + 1 : dotRadius}
+                    fill="url(#peer-dot-gradient)"
+                    stroke="hsl(185, 100%, 60%)"
+                    strokeWidth={isHovered ? 1.5 : 0.5}
+                    style={{ cursor: "pointer" }}
+                    data-testid={`dot-peer-${i}`}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+
+          {hoveredPeer && (
+            <div
+              className="absolute pointer-events-none z-50"
+              style={{
+                left: tooltipPos.x + 16,
+                top: tooltipPos.y - 10,
+                maxWidth: 280,
+              }}
+              data-testid="tooltip-map-peer"
+            >
+              <Card className="cyber-border cyber-glow p-3 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-3 h-3 text-primary" />
+                  <span className="text-xs font-mono text-primary">
+                    {hoveredPeer.city}, {hoveredPeer.country}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <span className="text-muted-foreground">IP</span>
+                  <span className="font-mono">{hoveredPeer.ip}</span>
+                  <span className="text-muted-foreground">Latitude</span>
+                  <span className="font-mono">{hoveredPeer.lat.toFixed(2)}</span>
+                  <span className="text-muted-foreground">Longitude</span>
+                  <span className="font-mono">{hoveredPeer.lon.toFixed(2)}</span>
+                  <span className="text-muted-foreground">Peers</span>
+                  <span className="font-mono text-primary">{hoveredPeer.count}</span>
+                </div>
+              </Card>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {topCountries.length > 0 && (
+        <Card className="cyber-border relative overflow-visible">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-60" />
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium tracking-wide uppercase">Top Countries</CardTitle>
+            <Globe className="w-4 h-4 text-primary/60" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {topCountries.map(([country, count], i) => {
+                const maxCount = topCountries[0][1] as number;
+                const pct = ((count as number) / maxCount) * 100;
+                return (
+                  <div key={country} className="flex items-center gap-3" data-testid={`country-entry-${i}`}>
+                    <span className="text-xs font-mono text-muted-foreground w-24 truncate">{country}</span>
+                    <div className="flex-1 h-2 rounded-full bg-primary/10 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary/60"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-mono text-primary w-8 text-right">{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </motion.div>
+  );
+}
+
 function PeersSkeleton() {
   return (
     <div className="p-6 space-y-6">
@@ -786,6 +1182,10 @@ export default function PeersPage() {
               <LayoutList className="w-4 h-4 mr-1.5" />
               Table
             </TabsTrigger>
+            <TabsTrigger value="map" data-testid="tab-map">
+              <MapPin className="w-4 h-4 mr-1.5" />
+              Map
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="graph" className="space-y-4">
@@ -795,6 +1195,10 @@ export default function PeersPage() {
 
           <TabsContent value="table">
             <PeerTable peers={peers} />
+          </TabsContent>
+
+          <TabsContent value="map" className="space-y-4">
+            <PeerGeoMap />
           </TabsContent>
         </Tabs>
       </motion.div>

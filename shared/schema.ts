@@ -28,7 +28,25 @@ export const metricsSnapshots = pgTable("metrics_snapshots", {
   closeTimeMs: real("close_time_ms"),
   loadFactor: real("load_factor"),
   serverState: text("server_state"),
+  nodeLatencyMs: real("node_latency_ms"),
+  reserveBase: real("reserve_base"),
+  reserveInc: real("reserve_inc"),
+  baseFee: real("base_fee"),
+  tps: real("tps"),
 });
+
+export const webhookConfigs = pgTable("webhook_configs", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type").notNull().default("discord"),
+  url: text("url").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  events: text("events").array().notNull().default(sql`ARRAY['alert_critical','alert_warning','connection_lost']`),
+});
+
+export const insertWebhookConfigSchema = createInsertSchema(webhookConfigs).omit({ id: true });
+export type InsertWebhookConfig = z.infer<typeof insertWebhookConfigSchema>;
+export type WebhookConfig = typeof webhookConfigs.$inferSelect;
 
 export const insertMetricsSnapshotSchema = createInsertSchema(metricsSnapshots).omit({ id: true });
 export type InsertMetricsSnapshot = z.infer<typeof insertMetricsSnapshotSchema>;
