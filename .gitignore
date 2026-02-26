@@ -15,5 +15,8 @@ vite.config.ts.*
 *.log
 npm-debug.log*
 
+# Attached assets (may contain personal screenshots/data)
+attached_assets/
+
 # OS files
 Thumbs.db
