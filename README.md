@@ -134,8 +134,11 @@ The backend acts as a thin proxy: it connects to your XRPL node over WebSocket, 
 ```bash
 git clone <your-repo-url> xrpl-monitor
 cd xrpl-monitor
+cp .env.example .env          # edit credentials before first run
 docker compose up -d
 ```
+
+> **Security note:** The default `docker-compose.yml` uses placeholder credentials (`changeme`). Always edit your `.env` file and set strong values for `POSTGRES_PASSWORD` and `SESSION_SECRET` before running in any environment.
 
 Open **http://localhost:5000** in your browser. See [INSTALL.md](INSTALL.md) for Docker networking details (connecting to your XRPL node, LM Studio, etc.).
 
