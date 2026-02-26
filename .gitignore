@@ -4,3 +4,16 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Environment files with secrets
+.env
+.env.local
+.env.production
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+Thumbs.db
