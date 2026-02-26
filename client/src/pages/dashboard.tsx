@@ -18,7 +18,7 @@ import {
   Layers,
   ShieldCheck,
 } from "lucide-react";
-import { useState, useRef, useCallback, useEffect, useId } from "react";
+import { useState, useRef, useCallback, useEffect, useId, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { NodeInfo, LedgerInfo } from "@shared/schema";
 
