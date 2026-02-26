@@ -1,3 +1,17 @@
+/**
+ * status-indicator.tsx — Displays a node sync status with colored dot + label.
+ *
+ * Status-to-color mapping:
+ *  - "synced"       → green  (online)
+ *  - "syncing"      → amber  (in progress)
+ *  - "disconnected" → red    (offline)
+ *
+ * Each status has a matching dot color, glow box-shadow, pulsing ring animation,
+ * and text-shadow so the label subtly glows in the status color.
+ * The dot sits inside a hexagonal SVG backdrop to match the app's hex theme.
+ * "disconnected" status omits the pulse-ring animation for visual distinction.
+ */
+
 import { cn } from "@/lib/utils";
 
 type StatusType = "synced" | "syncing" | "disconnected";
@@ -8,6 +22,7 @@ interface StatusIndicatorProps {
   className?: string;
 }
 
+/** Color/glow/animation config for each status type. */
 const statusConfig: Record<StatusType, { color: string; glowColor: string; ringColor: string; label: string }> = {
   synced: {
     color: "bg-status-online",

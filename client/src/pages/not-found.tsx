@@ -1,3 +1,4 @@
+/** Generic 404 fallback page — rendered when no route matches. */
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
 

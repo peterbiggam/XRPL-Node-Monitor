@@ -1,3 +1,16 @@
+/**
+ * animated-bg.tsx — Full-viewport canvas particle system.
+ *
+ * Renders a fixed, pointer-events-none canvas behind all content.
+ * Up to MAX_PARTICLES dots drift slowly with constant velocity and wrap
+ * around screen edges. When two particles are within CONNECTION_DISTANCE
+ * pixels, a translucent line is drawn between them — creating a subtle
+ * network/mesh aesthetic that fits the XRPL monitoring theme.
+ *
+ * The particle color is a cyan-ish tone matching the app's primary accent.
+ * On window resize the canvas is re-sized and particles are re-initialized.
+ */
+
 import { useEffect, useRef } from "react";
 
 interface Particle {

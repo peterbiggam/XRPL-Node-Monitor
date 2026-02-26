@@ -1,3 +1,21 @@
+/**
+ * metric-card.tsx — Reusable card for displaying a single numeric metric.
+ *
+ * Props:
+ *  - icon: Lucide icon rendered inside a hexagonal clip-path container.
+ *  - label: Uppercase metric name shown above the value.
+ *  - value: Primary numeric/string value, styled with a glowing mono font.
+ *  - subValue: Optional secondary text below the value (e.g. units or context).
+ *  - children: Optional extra content rendered below the value area.
+ *  - testId: Sets data-testid on the outer card for testing.
+ *
+ * Visual details:
+ *  - A thin gradient "data flow" animation runs along the top edge.
+ *  - The icon is clipped to a hexagon shape via CSS clip-path to match
+ *    the app's cyber/hex theme.
+ *  - A decorative "//" marker sits in the top-right corner.
+ */
+
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { type LucideIcon } from "lucide-react";

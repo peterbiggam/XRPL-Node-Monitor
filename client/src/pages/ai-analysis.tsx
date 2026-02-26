@@ -1,3 +1,15 @@
+/**
+ * AI Analysis Page — Chat interface for querying a local LM Studio instance.
+ *
+ * Features:
+ * - SSE (Server-Sent Events) streaming: POST /api/ai/analyze returns a text/event-stream.
+ *   Tokens are parsed incrementally and displayed with a blinking cursor.
+ * - Context selector: narrows the node data injected into the AI prompt
+ *   (general, node, ledger, peers, system, alerts).
+ * - Quick-action buttons that pre-fill the prompt with common analysis requests.
+ * - Session management sidebar: create / load / delete conversation sessions.
+ * - Configurable LM Studio connection (host, port, model) with a health-check button.
+ */
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -39,6 +51,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import type { AiConfig, AiConversation } from "@shared/schema";
 
+/** Available context scopes — each determines which node data is sent with the AI prompt. */
 const contextOptions = [
   { value: "general", label: "General", icon: Sparkles, description: "All available node data" },
   { value: "node", label: "Node Health", icon: Activity, description: "Server state, uptime, load factor" },
@@ -48,6 +61,7 @@ const contextOptions = [
   { value: "alerts", label: "Alert Review", icon: AlertTriangle, description: "Recent alerts and thresholds" },
 ];
 
+/** One-click prompt shortcuts shown above the chat area. */
 const quickActions = [
   { label: "Analyze Node Health", context: "node", message: "Analyze the current node health status and provide recommendations." },
   { label: "Review Alerts", context: "alerts", message: "Review the recent alerts and identify any patterns or concerns." },
@@ -166,6 +180,12 @@ export default function AiAnalysisPage() {
     },
   });
 
+  /**
+   * Send a message to the AI backend and stream the response via SSE.
+   * Tokens arrive as JSON objects with a `content` field; the stream
+   * terminates with a `[DONE]` sentinel.  On error, a synthetic
+   * assistant message is appended so the user can see the failure.
+   */
   const sendMessage = useCallback(async (msg: string, ctx: string) => {
     if (!msg.trim() || isStreaming) return;
 

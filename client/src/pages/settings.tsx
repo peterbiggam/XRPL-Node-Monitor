@@ -1,3 +1,15 @@
+/**
+ * Settings Page — Connection configuration, node management, webhooks, and AI config.
+ *
+ * Sections:
+ * 1. Connection Config — Form for the primary XRPL node (host, ports) validated
+ *    with the connectionConfigSchema from shared/schema.
+ * 2. Saved Nodes — CRUD list of XRPL nodes with status dots showing live connectivity.
+ *    One node is "active" at a time; switching triggers a cache-wide invalidation.
+ * 3. Webhook Config — Discord / Telegram / generic webhook CRUD with event checkboxes.
+ *    Webhook enable/disable toggle and a "Test" button that triggers a test POST.
+ * 4. AI (LM Studio) Config — Host/port/model for the local AI assistant.
+ */
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -48,6 +60,7 @@ const nodeFormSchema = z.object({
 });
 type NodeFormValues = z.infer<typeof nodeFormSchema>;
 
+/** Live-polling coloured dot for a saved node (green/amber/red). */
 function NodeStatusDot({ nodeId }: { nodeId: number }) {
   const { data: status } = useQuery<{ status: string; serverState?: string; peers?: number; ledgerSeq?: number }>({
     queryKey: ["/api/nodes", nodeId, "status"],
@@ -112,6 +125,7 @@ function NodeStatusInfo({ nodeId }: { nodeId: number }) {
   );
 }
 
+/** Dialog for creating or editing a saved XRPL node entry. */
 function NodeFormDialog({
   node,
   open,
@@ -296,6 +310,7 @@ function NodeFormDialog({
   );
 }
 
+/** List of saved nodes with activate / edit / delete actions. */
 function NodeList() {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -457,6 +472,8 @@ function NodeList() {
   );
 }
 
+// --- Webhook configuration section ---
+
 const WEBHOOK_EVENTS = [
   { value: "alert_critical", label: "Critical Alert" },
   { value: "alert_warning", label: "Warning Alert" },
@@ -471,6 +488,7 @@ const webhookFormSchema = z.object({
 });
 type WebhookFormValues = z.infer<typeof webhookFormSchema>;
 
+/** Dialog for creating or editing a webhook (Discord, Telegram, or generic HTTP). */
 function WebhookFormDialog({
   webhook,
   open,

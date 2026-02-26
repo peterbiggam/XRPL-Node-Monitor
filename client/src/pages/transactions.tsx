@@ -1,3 +1,14 @@
+/**
+ * Transactions Page — Live feed and type distribution for the latest ledger's transactions.
+ *
+ * Components:
+ * - TransactionFeed: Scrollable list of recent transactions with success/fail indicators,
+ *   account addresses, amounts, and fees. Each row has a left-edge color bar (green/red).
+ * - TransactionTypeChart: Recharts PieChart (donut) showing the distribution of
+ *   transaction types (Payment, OfferCreate, etc.) in the current dataset.
+ *
+ * Data is polled every 5 seconds from GET /api/node/transactions.
+ */
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +62,7 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
 };
 
+/** Donut chart aggregating transaction counts by type (Payment, OfferCreate, etc.). */
 function TransactionTypeChart({ transactions }: { transactions: TransactionInfo[] }) {
   const typeCounts: Record<string, number> = {};
   for (const tx of transactions) {
@@ -133,6 +145,7 @@ function TransactionTypeChart({ transactions }: { transactions: TransactionInfo[
   );
 }
 
+/** Scrollable list of individual transactions with success indicator, account, amount, and fee. */
 function TransactionFeed({ transactions }: { transactions: TransactionInfo[] }) {
   return (
     <motion.div variants={itemVariants}>

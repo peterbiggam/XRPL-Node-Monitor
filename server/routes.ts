@@ -1,3 +1,6 @@
+// API route registration and background services (metrics collector, alert engine).
+// All XRPL communication goes through ephemeral WebSocket connections to the configured node.
+
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
 import WebSocket from "ws";
@@ -7,10 +10,16 @@ import { connectionConfigSchema } from "@shared/schema";
 import type { NodeInfo, LedgerInfo, PeerInfo, TransactionInfo, SystemMetrics, AccountInfo, FeeInfo, ValidatorInfo, AmendmentInfo } from "@shared/schema";
 import { log } from "./index";
 
+// --- XRPL WebSocket helpers ---
+
+// Constructs a WebSocket URL from host and port
 function getWsUrl(host: string, port: number): string {
   return `ws://${host}:${port}`;
 }
 
+// Sends a single XRPL command via WebSocket with automatic port fallback.
+// Tries the requested port first, then falls back to common rippled ports
+// (6006, 5005, 8080) in case the node uses a non-standard configuration.
 async function sendXrplCommand(host: string, port: number, command: Record<string, unknown>): Promise<any> {
   const FALLBACK_PORTS = [6006, 5005, 8080];
   const portsToTry = [port, ...FALLBACK_PORTS.filter(p => p !== port)];
@@ -29,6 +38,9 @@ async function sendXrplCommand(host: string, port: number, command: Record<strin
   throw lastError || new Error("Failed to connect to XRPL node");
 }
 
+// Opens a one-shot WebSocket connection, sends the command, waits for a single
+// response, then closes. Has a 5s handshake timeout and 10s overall timeout
+// to avoid hanging on unreachable nodes.
 function sendXrplCommandToPort(host: string, port: number, command: Record<string, unknown>): Promise<any> {
   return new Promise((resolve, reject) => {
     const url = getWsUrl(host, port);
@@ -61,10 +73,15 @@ function sendXrplCommandToPort(host: string, port: number, command: Record<strin
   });
 }
 
+// --- Route Registration ---
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // === Connection Config ===
+  // GET/POST the XRPL node connection target (host + ports)
 
   app.get("/api/connection", async (_req, res) => {
     const config = await storage.getConnectionConfig();
@@ -79,6 +96,10 @@ export async function registerRoutes(
     const config = await storage.setConnectionConfig(parsed.data);
     res.json(config);
   });
+
+  // === Node Info ===
+  // Fetches server_info from the XRPL node and normalizes it into our NodeInfo shape.
+  // Returns { status: "connected"|"disconnected"|"error", data: NodeInfo|null }
 
   app.get("/api/node/info", async (_req, res) => {
     try {
@@ -129,6 +150,9 @@ export async function registerRoutes(
     }
   });
 
+  // === Ledger Info ===
+  // Returns the latest validated ledger's metadata (hash, close time, tx count, etc.)
+
   app.get("/api/node/ledger", async (_req, res) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -161,6 +185,9 @@ export async function registerRoutes(
     }
   });
 
+  // === Peers ===
+  // Requires admin port. Returns connected peer details (address, version, latency, etc.)
+
   app.get("/api/node/peers", async (_req, res) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -188,6 +215,9 @@ export async function registerRoutes(
       res.json({ status: "disconnected", message: err.message || "Failed to connect", data: null });
     }
   });
+
+  // === Transactions ===
+  // Fetches expanded transactions from the latest validated ledger
 
   app.get("/api/node/transactions", async (_req, res) => {
     try {
@@ -229,6 +259,10 @@ export async function registerRoutes(
       res.json({ status: "disconnected", message: err.message || "Failed to connect", data: [] });
     }
   });
+
+  // === System Metrics ===
+  // Returns host machine stats (CPU, RAM, disk, network) via the systeminformation library.
+  // This is the *host* system, not the XRPL node itself.
 
   app.get("/api/system/metrics", async (_req, res) => {
     try {
@@ -285,6 +319,10 @@ export async function registerRoutes(
     }
   });
 
+  // === Webhook Dispatcher ===
+  // Sends alert notifications to all enabled webhooks subscribed to the given event.
+  // Supports Discord embeds, Telegram bot API, and generic JSON POST webhooks.
+  // Failures are logged but never propagated — webhooks are fire-and-forget.
   async function fireWebhooks(event: string, message: string, severity?: string) {
     try {
       const webhooks = await storage.getEnabledWebhooksForEvent(event);
@@ -306,6 +344,7 @@ export async function registerRoutes(
               }),
             });
           } else if (wh.type === "telegram") {
+            // Telegram webhook URL format: "botToken|chatId"
             const [botToken, chatId] = wh.url.split("|");
             if (botToken && chatId) {
               await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -315,6 +354,7 @@ export async function registerRoutes(
               });
             }
           } else {
+            // Generic JSON webhook
             await fetch(wh.url, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -328,15 +368,20 @@ export async function registerRoutes(
     } catch {}
   }
 
+  // Tracks the previous ledger index and timestamp for TPS calculation.
+  // TPS is estimated as: (tx count in latest ledger) / (seconds since last ledger change).
   let lastLedgerIndex = 0;
   let lastLedgerTime = Date.now();
 
-  // === T002: Metrics Snapshot Collection ===
+  // === Metrics Snapshot Collector ===
+  // Runs every 30 seconds. Gathers XRPL node state + host system stats,
+  // persists a snapshot, prunes entries older than 7 days, then runs the alert engine.
   async function collectMetricsSnapshot() {
     try {
       const config = await storage.getConnectionConfig();
       let nodeData: Partial<{ peerCount: number; ledgerIndex: number; closeTimeMs: number; loadFactor: number; serverState: string; nodeLatencyMs: number; reserveBase: number; reserveInc: number; baseFee: number }> = {};
 
+      // Fetch XRPL node info and measure WebSocket round-trip latency
       try {
         const startTime = Date.now();
         const response = await sendXrplCommand(config.host, config.wsPort, { command: "server_info" });
@@ -358,6 +403,7 @@ export async function registerRoutes(
         }
       } catch {}
 
+      // Estimate TPS: only calculated when the ledger has advanced since last check
       let tps: number | null = null;
       const currentLedger = nodeData.ledgerIndex || 0;
       const now = Date.now();
@@ -378,6 +424,7 @@ export async function registerRoutes(
       lastLedgerIndex = currentLedger;
       lastLedgerTime = now;
 
+      // Gather host system CPU and memory usage
       let cpuLoad = 0;
       let memPercent = 0;
       try {
@@ -386,6 +433,7 @@ export async function registerRoutes(
         memPercent = Math.round((mem.used / mem.total) * 10000) / 100;
       } catch {}
 
+      // Persist the snapshot
       await storage.addMetricsSnapshot({
         nodeHost: config.host,
         cpuLoad,
@@ -402,15 +450,20 @@ export async function registerRoutes(
         tps,
       });
 
+      // Prune snapshots older than 7 days
       await storage.cleanOldMetrics(7);
 
+      // Run the alert detection engine against the latest values
       await checkAlerts(cpuLoad, memPercent, nodeData);
     } catch (err: any) {
       log(`Metrics snapshot error: ${err.message}`, "metrics");
     }
   }
 
-  // === T004: Alert Detection Engine ===
+  // === Alert Detection Engine ===
+  // Compares current metric values against user-configured thresholds.
+  // Creates an alert (and fires webhooks) if a threshold is breached and
+  // no alert of the same type exists within the last 5 minutes (deduplication).
   async function checkAlerts(cpuLoad: number, memPercent: number, nodeData: any) {
     try {
       const thresholds = await storage.getAlertThresholds();
@@ -442,12 +495,15 @@ export async function registerRoutes(
 
         if (currentValue === null) continue;
 
+        // Direction determines comparison: "above" means alert when value >= threshold,
+        // "below" means alert when value <= threshold (e.g. peer count dropping too low).
         const isAbove = t.direction === "above";
         const isCritical = isAbove ? currentValue >= t.criticalValue : currentValue <= t.criticalValue;
         const isWarning = isAbove ? currentValue >= t.warningValue : currentValue <= t.warningValue;
 
         if (isCritical || isWarning) {
           const severity = isCritical ? "critical" : "warning";
+          // Suppress duplicate alerts: skip if same type was fired in the last 5 minutes
           const recent = await storage.getRecentAlertByType(t.metric, 5);
           if (!recent) {
             const direction = isAbove ? "exceeded" : "dropped below";
@@ -460,6 +516,7 @@ export async function registerRoutes(
               value: currentValue,
               threshold,
             });
+            // Fire webhooks asynchronously — don't block the collector
             fireWebhooks(`alert_${severity}`, alertMsg, severity).catch(() => {});
           }
         }
@@ -469,17 +526,21 @@ export async function registerRoutes(
     }
   }
 
+  // Seed default thresholds on startup, then start the periodic collector
   await storage.seedDefaultThresholds();
   setInterval(collectMetricsSnapshot, 30000);
   collectMetricsSnapshot();
 
+  // === Metrics History API ===
+  // Returns stored snapshots for the last N hours (default 24)
   app.get("/api/metrics/history", async (req: Request, res: Response) => {
     const hours = parseInt(req.query.hours as string) || 24;
     const data = await storage.getMetricsHistory(hours);
     res.json(data);
   });
 
-  // === T004: Alert API endpoints ===
+  // === Alert API Endpoints ===
+
   app.get("/api/alerts", async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 100;
     const data = await storage.getAlerts(limit);
@@ -510,7 +571,9 @@ export async function registerRoutes(
     res.json(result);
   });
 
-  // === T006: Transaction Search + Account Lookup ===
+  // === Transaction Search + Account Lookup ===
+
+  // Look up a single transaction by hash
   app.get("/api/node/tx/:hash", async (req: Request, res: Response) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -545,6 +608,7 @@ export async function registerRoutes(
     }
   });
 
+  // Look up account info by address
   app.get("/api/node/account/:address", async (req: Request, res: Response) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -573,6 +637,7 @@ export async function registerRoutes(
     }
   });
 
+  // Fetch recent transactions for an account (last 20)
   app.get("/api/node/account/:address/transactions", async (req: Request, res: Response) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -609,6 +674,9 @@ export async function registerRoutes(
     }
   });
 
+  // === Fee Estimator ===
+  // Returns current transaction fee levels (minimum, median, open ledger fee)
+
   app.get("/api/node/fee", async (_req: Request, res: Response) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -633,7 +701,10 @@ export async function registerRoutes(
     }
   });
 
-  // === T009: Validator + Amendment Endpoints ===
+  // === Validator + Amendment Endpoints ===
+  // These require the admin port since "validators" and "feature" are admin-only commands.
+
+  // List trusted validators
   app.get("/api/node/validators", async (_req: Request, res: Response) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -665,6 +736,7 @@ export async function registerRoutes(
     }
   });
 
+  // List protocol amendments (features) — enabled, supported, and vetoed status
   app.get("/api/node/amendments", async (_req: Request, res: Response) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -691,6 +763,7 @@ export async function registerRoutes(
     }
   });
 
+  // Get this node's own validator info (only meaningful if the node is a validator)
   app.get("/api/node/validator-info", async (_req: Request, res: Response) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -708,7 +781,9 @@ export async function registerRoutes(
     }
   });
 
-  // === T011: Multi-Node Management ===
+  // === Multi-Node Management ===
+  // CRUD for saved XRPL node configurations + activate/status endpoints
+
   app.get("/api/nodes", async (_req: Request, res: Response) => {
     const nodes = await storage.getSavedNodes();
     res.json(nodes);
@@ -741,6 +816,7 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  // Sets a node as active — all subsequent XRPL queries will target this node
   app.post("/api/nodes/:id/activate", async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     const node = await storage.setActiveNode(id);
@@ -748,6 +824,7 @@ export async function registerRoutes(
     res.json(node);
   });
 
+  // Quick health check for a specific saved node (without activating it)
   app.get("/api/nodes/:id/status", async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     const node = await storage.getSavedNode(id);
@@ -770,7 +847,9 @@ export async function registerRoutes(
     }
   });
 
-  // === T013: LM Studio AI Integration ===
+  // === LM Studio AI Integration ===
+  // Proxies chat requests to a local LM Studio instance with XRPL-aware context injection.
+
   app.get("/api/ai/config", async (_req: Request, res: Response) => {
     const config = await storage.getAiConfig();
     res.json(config || { host: "localhost", port: 1234, model: "" });
@@ -786,6 +865,7 @@ export async function registerRoutes(
     res.json(config);
   });
 
+  // Tests connectivity to the configured LM Studio instance
   app.post("/api/ai/health-check", async (req: Request, res: Response) => {
     const config = await storage.getAiConfig();
     const host = config?.host || "localhost";
@@ -819,6 +899,10 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  // Main AI analysis endpoint — streams responses via Server-Sent Events (SSE).
+  // Gathers live XRPL context data based on the "context" parameter
+  // (node, ledger, peers, system, alerts, or general for all), then sends
+  // the conversation history + context to LM Studio for completion.
   app.post("/api/ai/analyze", async (req: Request, res: Response) => {
     const { message, sessionId, context } = req.body;
     if (!message) return res.status(400).json({ message: "Message is required" });
@@ -829,6 +913,7 @@ export async function registerRoutes(
     const model = config?.model || "";
     const sid = sessionId || `session-${Date.now()}`;
 
+    // Build real-time context string from live XRPL data based on the requested context type
     let contextData = "";
     try {
       const connConfig = await storage.getConnectionConfig();
@@ -876,16 +961,20 @@ export async function registerRoutes(
       }
     } catch {}
 
+    // Persist the user message
     await storage.addAiMessage({ sessionId: sid, role: "user", content: message, context: context || null });
 
+    // Build the system prompt with injected real-time context
     const systemPrompt = `You are an XRPL Node Monitoring AI Assistant. You help analyze XRP Ledger node health, network performance, and provide insights about the node's operation. Be concise but thorough. Use technical XRPL terminology when appropriate.${contextData ? `\n\nCurrent Node Data:${contextData}` : ""}`;
 
+    // Include last 20 messages for conversation continuity
     const previousMessages = await storage.getAiConversations(sid);
     const chatMessages = [
       { role: "system", content: systemPrompt },
       ...previousMessages.slice(-20).map(m => ({ role: m.role, content: m.content })),
     ];
 
+    // Set up SSE headers for streaming the AI response
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -909,6 +998,7 @@ export async function registerRoutes(
         return;
       }
 
+      // Stream response chunks from LM Studio to the client via SSE
       let fullResponse = "";
       const reader = aiResponse.body as any;
 
@@ -936,6 +1026,7 @@ export async function registerRoutes(
           }
         }
       } else {
+        // Fallback for non-streaming responses (shouldn't normally happen)
         const text = await aiResponse.text();
         try {
           const parsed = JSON.parse(text);
@@ -957,7 +1048,9 @@ export async function registerRoutes(
     }
   });
 
-  // === T017: Export & Reporting ===
+  // === Export & Reporting ===
+  // Generates a summary report of metrics history with optional CSV export.
+  // Calculates min/avg/max for CPU, memory, and peer count over the requested time range.
   app.get("/api/export/report", async (req: Request, res: Response) => {
     const hours = parseInt(req.query.hours as string) || 24;
     const snapshots = await storage.getMetricsHistory(hours);
@@ -985,6 +1078,7 @@ export async function registerRoutes(
       criticalAlerts: recentAlerts.filter(a => a.severity === "critical").length,
     };
 
+    // CSV format: returns a downloadable file with headers
     const format = req.query.format as string;
     if (format === "csv") {
       res.setHeader("Content-Type", "text/csv");
@@ -1000,6 +1094,9 @@ export async function registerRoutes(
   });
 
   // === Health Score ===
+  // Computes a 0-100 composite health score from multiple weighted factors:
+  // server state (25pts), peer count (20pts), ledger freshness (20pts),
+  // latency (15pts), load factor (10pts), uptime (10pts).
   app.get("/api/node/health-score", async (_req: Request, res: Response) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -1014,6 +1111,7 @@ export async function registerRoutes(
         if (response.result?.info) {
           const info = response.result.info;
 
+          // Server state scoring: "full"/"proposing"/"validating" = max, degraded states get less
           const state = info.server_state || "disconnected";
           const stateScore = state === "full" || state === "proposing" || state === "validating" ? 25
             : state === "tracking" || state === "syncing" ? 15
@@ -1021,25 +1119,30 @@ export async function registerRoutes(
           components.serverState = { score: stateScore, max: 25, detail: state };
           score += stateScore;
 
+          // Peer count: linearly scales up to 20 peers for full score
           const peers = info.peers || 0;
           const peerScore = Math.min(peers / 20 * 20, 20);
           components.peers = { score: Math.round(peerScore), max: 20, detail: `${peers} peers` };
           score += peerScore;
 
+          // Ledger age: fresher ledgers score higher (<=10s = perfect)
           const ledgerAge = info.validated_ledger?.age || 999;
           const ageScore = ledgerAge <= 10 ? 20 : ledgerAge <= 30 ? 15 : ledgerAge <= 60 ? 8 : 0;
           components.ledgerAge = { score: ageScore, max: 20, detail: `${ledgerAge}s ago` };
           score += ageScore;
 
+          // Latency: lower WebSocket round-trip = higher score
           const latencyScore = latency <= 100 ? 15 : latency <= 500 ? 10 : latency <= 2000 ? 5 : 0;
           components.latency = { score: latencyScore, max: 15, detail: `${latency}ms` };
           score += latencyScore;
 
+          // Load factor: 1x = no load (perfect), higher values reduce score
           const lf = info.load_factor || 1;
           const loadScore = lf <= 1 ? 10 : lf <= 2 ? 7 : lf <= 5 ? 3 : 0;
           components.loadFactor = { score: loadScore, max: 10, detail: `${lf}x` };
           score += loadScore;
 
+          // Uptime: longer uptime = higher score (1 day+ = max)
           const uptime = info.uptime || 0;
           const uptimeScore = uptime >= 86400 ? 10 : uptime >= 3600 ? 7 : uptime >= 300 ? 3 : 1;
           components.uptime = { score: uptimeScore, max: 10, detail: `${Math.floor(uptime / 3600)}h` };
@@ -1056,6 +1159,8 @@ export async function registerRoutes(
   });
 
   // === Ledger Lag ===
+  // Compares local node's latest validated ledger against the public s2.ripple.com node.
+  // A lag of <=3 ledgers is considered synced. Both requests run in parallel.
   app.get("/api/node/ledger-lag", async (_req: Request, res: Response) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -1074,7 +1179,8 @@ export async function registerRoutes(
     }
   });
 
-  // === TPS ===
+  // === TPS (Transactions Per Second) ===
+  // Returns current, average, and peak TPS from the last hour of stored snapshots
   app.get("/api/node/tps", async (_req: Request, res: Response) => {
     const snapshots = await storage.getMetricsHistory(1);
     const tpsValues = snapshots.filter(s => s.tps != null && s.tps! > 0).map(s => s.tps!);
@@ -1085,6 +1191,8 @@ export async function registerRoutes(
   });
 
   // === UNL Comparison ===
+  // Compares this node's trusted validator list against Ripple's recommended UNL
+  // (fetched from vl.ripple.com). Shows overlap, local-only, and UNL-only validators.
   app.get("/api/node/unl-comparison", async (_req: Request, res: Response) => {
     try {
       const config = await storage.getConnectionConfig();
@@ -1128,13 +1236,17 @@ export async function registerRoutes(
     }
   });
 
-  // === Peer Locations ===
+  // === Peer Geolocation ===
+  // Extracts public IPs from connected peers (filtering out private/local ranges),
+  // then geolocates up to 50 unique IPs via the ip-api.com free API.
+  // Rate-limited with 200ms delay between requests to respect the API's limits.
   app.get("/api/node/peer-locations", async (_req: Request, res: Response) => {
     try {
       const config = await storage.getConnectionConfig();
       const response = await sendXrplCommand(config.host, config.adminPort, { command: "peers" });
       if (!response.result?.peers) return res.json({ locations: [] });
 
+      // Extract public IPs, filtering out private/loopback ranges
       const ips = response.result.peers
         .map((p: any) => {
           const addr = p.address || "";
@@ -1156,6 +1268,7 @@ export async function registerRoutes(
               locations.push({ ip, lat: geo.lat, lon: geo.lon, country: geo.country, city: geo.city, count });
             }
           }
+          // Rate limit: ip-api.com allows ~45 requests/minute on the free tier
           await new Promise(r => setTimeout(r, 200));
         } catch {}
       }
@@ -1167,6 +1280,8 @@ export async function registerRoutes(
   });
 
   // === Webhook CRUD ===
+  // Manages notification webhook endpoints (Discord, Telegram, generic JSON)
+
   app.get("/api/webhooks", async (_req: Request, res: Response) => {
     const configs = await storage.getWebhookConfigs();
     res.json(configs);
@@ -1199,6 +1314,7 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  // Sends a test notification to verify webhook connectivity
   app.post("/api/webhooks/:id/test", async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     const wh = await storage.getWebhookConfig(id);
@@ -1225,7 +1341,9 @@ export async function registerRoutes(
     }
   });
 
-  // === Multi-node comparison ===
+  // === Multi-Node Comparison ===
+  // Queries all saved nodes in parallel and returns a side-by-side comparison
+  // of their state, peer count, ledger sequence, latency, and version.
   app.get("/api/nodes/compare", async (_req: Request, res: Response) => {
     const nodes = await storage.getSavedNodes();
     const results = await Promise.allSettled(

@@ -1,3 +1,15 @@
+/**
+ * Validators & Amendments Page — Consensus network overview.
+ *
+ * Sections:
+ * 1. Own Validator Info — If this node is a validator, show agreement %, ledger count.
+ * 2. Validator Summary — Total / UNL / publisher-list counts.
+ * 3. Validator List — Table of all known validators with public key, domain, UNL status.
+ * 4. UNL Comparison — Overlap analysis between the local UNL and the published UNL,
+ *    showing matching / local-only / UNL-only keys with a progress bar.
+ * 5. Amendment Summary + Table — Enabled / pending / vetoed amendments with
+ *    progress bars for pending amendments approaching their activation threshold.
+ */
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -109,6 +121,7 @@ function ValidatorSummary({ validators, publisherCount }: { validators: Validato
   );
 }
 
+/** Card shown when the local node is an active validator — agreement, ledger count, public key. */
 function OwnValidatorInfo({ data }: { data: any }) {
   if (!data) return null;
 
@@ -236,6 +249,7 @@ function ValidatorList({ validators }: { validators: ValidatorInfo[] }) {
   );
 }
 
+/** Summary cards for amendment counts: enabled, pending, vetoed. */
 function AmendmentSummary({ amendments }: { amendments: AmendmentInfo[] }) {
   const enabled = amendments.filter((a) => a.enabled).length;
   const pending = amendments.filter((a) => !a.enabled && a.supported && !a.vetoed).length;
@@ -273,6 +287,11 @@ function AmendmentSummary({ amendments }: { amendments: AmendmentInfo[] }) {
   );
 }
 
+/**
+ * AmendmentTable — Full amendment list sorted: pending first, then enabled,
+ * vetoed, unsupported.  Pending amendments show a Progress bar indicating
+ * how close they are to reaching the activation threshold (count / threshold).
+ */
 function AmendmentTable({ amendments }: { amendments: AmendmentInfo[] }) {
   const pending = amendments.filter((a) => !a.enabled && a.supported && !a.vetoed);
   const enabled = amendments.filter((a) => a.enabled);
@@ -387,6 +406,7 @@ function AmendmentTable({ amendments }: { amendments: AmendmentInfo[] }) {
   );
 }
 
+/** UNL Comparison panel — shows overlap between local and published UNL validator sets. */
 function UnlComparison({ data }: { data: UnlComparisonResponse["data"] }) {
   const overlapColor = data.overlap >= 80 ? "text-green-400" : data.overlap >= 50 ? "text-amber-400" : "text-red-400";
 

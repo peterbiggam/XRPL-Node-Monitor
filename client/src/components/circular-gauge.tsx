@@ -1,3 +1,25 @@
+/**
+ * circular-gauge.tsx — Animated SVG circular gauge (0–100%).
+ *
+ * The gauge is rendered as two concentric circles:
+ *  - A background track (muted color).
+ *  - A foreground arc whose length = (value / 100) * circumference.
+ *
+ * SVG math:
+ *  - radius = (size - strokeWidth - 8) / 2   (inner arc)
+ *  - circumference = 2 * PI * radius
+ *  - strokeDashoffset = circumference - (value/100) * circumference
+ *  - The SVG is rotated -90deg so the arc starts at the top (12 o'clock).
+ *
+ * Color thresholds: cyan (<50%), yellow (<75%), orange (<90%), red (>=90%).
+ * Values >90% trigger an extra pulsing glow layer for a critical-warning effect.
+ *
+ * The displayed number animates smoothly from the previous value to the new one
+ * over 700ms using requestAnimationFrame with a cubic ease-out curve.
+ *
+ * 24 tick marks are drawn around the outer ring (every 6th is a major tick).
+ */
+
 import { useState, useEffect, useRef, useId } from "react";
 
 interface CircularGaugeProps {
@@ -8,6 +30,7 @@ interface CircularGaugeProps {
   sublabel?: string;
 }
 
+/** Returns the arc stroke color based on severity thresholds. */
 function getGaugeColor(percent: number): string {
   if (percent < 50) return "hsl(185, 100%, 50%)";
   if (percent < 75) return "hsl(48, 96%, 53%)";
@@ -15,6 +38,7 @@ function getGaugeColor(percent: number): string {
   return "hsl(0, 84%, 50%)";
 }
 
+/** Returns the outer glow rgba color (used for the >90% pulse layer). */
 function getGaugeGlowColor(percent: number): string {
   if (percent < 50) return "rgba(0, 230, 255, 0.6)";
   if (percent < 75) return "rgba(255, 210, 50, 0.6)";

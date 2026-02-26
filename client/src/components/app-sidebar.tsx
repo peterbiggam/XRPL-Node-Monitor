@@ -1,3 +1,11 @@
+/**
+ * app-sidebar.tsx — Main navigation sidebar for XRPL Node Monitor.
+ *
+ * Contains: animated hexagon logo, a dropdown node switcher (to change the
+ * active XRPL node), navigation menu with a live unacknowledged-alert badge
+ * on the "Alert Center" item, and a "SYS ONLINE" footer indicator.
+ */
+
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -43,6 +51,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Alert } from "@shared/schema";
 
+/** Sidebar nav items — order determines display order, icons from lucide-react. */
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Metrics History", url: "/history", icon: Clock },
@@ -58,6 +67,7 @@ const navItems = [
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
+/** Decorative double-hexagon SVG logo with a pulsing glow and centered Activity icon. */
 function HexagonLogo() {
   return (
     <div className="relative flex items-center justify-center w-12 h-12">
@@ -86,6 +96,12 @@ function HexagonLogo() {
   );
 }
 
+/**
+ * Dropdown menu to switch between saved XRPL nodes.
+ * Fetches the node list from /api/nodes; the active node is marked with a checkmark.
+ * Activating a different node POSTs to /api/nodes/:id/activate and invalidates
+ * related query caches so the UI refreshes with the new node's data.
+ */
 function NodeSwitcher() {
   const [, setLocation] = useLocation();
 
@@ -168,6 +184,12 @@ function NodeSwitcher() {
   );
 }
 
+/**
+ * Full sidebar component.
+ * Polls /api/alerts every 10s to compute the unacknowledged alert count,
+ * which is displayed as a pulsing destructive badge next to "Alert Center".
+ * The active nav item is highlighted with a glowing left-edge indicator bar.
+ */
 export function AppSidebar() {
   const [location] = useLocation();
 

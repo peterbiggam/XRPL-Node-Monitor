@@ -1,3 +1,14 @@
+/**
+ * Explorer Page — Transaction lookup, account info, fee estimator, and ledger gap analysis.
+ *
+ * Search bar auto-detects the input type:
+ *   - 64-char hex → transaction hash lookup (GET /api/node/tx/:hash)
+ *   - Starts with 'r' → account info + recent transactions
+ *
+ * Always-visible sections:
+ *   - Fee Estimator — minimum / median / open-ledger fee cards
+ *   - Ledger Coverage — parsed completeLedgers range, gap detection
+ */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MetricCard } from "@/components/metric-card";
@@ -54,6 +65,7 @@ interface FeeResponse {
 
 type SearchType = "none" | "tx" | "account";
 
+/** Heuristically determine if user input is a TX hash or account address. */
 function detectSearchType(input: string): SearchType {
   const trimmed = input.trim();
   if (!trimmed) return "none";
@@ -64,6 +76,7 @@ function detectSearchType(input: string): SearchType {
   return "none";
 }
 
+/** Convert drops (string) to XRP decimal string. 1 XRP = 1,000,000 drops. */
 function dropsToXrp(drops: string): string {
   const num = parseInt(drops, 10);
   if (isNaN(num)) return "0";
@@ -75,6 +88,7 @@ function formatXrpBalance(drops: string): string {
   return xrp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 });
 }
 
+/** Convert XRPL epoch timestamp (seconds since 2000-01-01) to a locale date string. */
 function xrplTimeToDate(xrplTimestamp: number): string {
   if (!xrplTimestamp) return "N/A";
   const rippleEpoch = 946684800;
@@ -82,6 +96,7 @@ function xrplTimeToDate(xrplTimestamp: number): string {
   return date.toLocaleString();
 }
 
+/** Parse the "completeLedgers" string into contiguous ranges and identify any gaps between them. */
 function parseLedgerGaps(completeLedgers: string): { ranges: [number, number][]; gaps: [number, number][] } {
   if (!completeLedgers || completeLedgers === "empty") return { ranges: [], gaps: [] };
   const parts = completeLedgers.split(",").map((s) => s.trim());

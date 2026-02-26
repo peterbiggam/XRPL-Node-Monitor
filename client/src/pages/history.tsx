@@ -1,3 +1,16 @@
+/**
+ * History Page — Displays historical metrics charts with time-range selection.
+ *
+ * Features:
+ * - Configurable time window (1 H / 6 H / 24 H / 7 D) that controls the API query
+ * - Core metric charts: CPU load, memory, peer count, ledger close time, load factor
+ * - Extended metric charts: node latency, TPS, base fee
+ * - Latency heatmap: time-bucketed grid cells color-coded by avg latency
+ * - CSV / JSON export buttons (open the export API in a new tab)
+ *
+ * Each chart is configured via a ChartConfig object that maps a MetricsSnapshot
+ * field to a Recharts AreaChart with a gradient fill and glow filter.
+ */
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +29,7 @@ import { motion } from "framer-motion";
 import { Cpu, MemoryStick, Users, Clock, Gauge, Download, Activity, Zap, DollarSign } from "lucide-react";
 import type { MetricsSnapshot } from "@shared/schema";
 
+/** Time-range selector options — label shown in UI, value is hours for the API. */
 const TIME_RANGES = [
   { label: "1H", value: 1 },
   { label: "6H", value: 6 },
@@ -48,6 +62,10 @@ function formatTime(timestamp: string, hours: number): string {
     d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
 }
 
+/**
+ * ChartConfig — Declarative description for each metrics chart.
+ * dataKey selects the field from MetricsSnapshot; domain can pin the Y axis.
+ */
 interface ChartConfig {
   title: string;
   icon: typeof Cpu;
@@ -58,6 +76,7 @@ interface ChartConfig {
   domain?: [number, number];
 }
 
+/** Core infrastructure charts shown in the primary grid. */
 const CHARTS: ChartConfig[] = [
   {
     title: "CPU LOAD",
@@ -103,6 +122,7 @@ const CHARTS: ChartConfig[] = [
   },
 ];
 
+/** Extended metrics charts shown in a secondary grid below the heatmap. */
 const NEW_CHARTS: ChartConfig[] = [
   {
     title: "NODE LATENCY",
@@ -239,6 +259,9 @@ function MetricsChart({ config, data, hours }: {
   );
 }
 
+// --- Latency heatmap helpers ---
+
+/** Map a latency value to an HSL color on a green→red gradient. */
 function getLatencyColor(latencyMs: number): string {
   if (latencyMs <= 50) return "hsl(120, 80%, 40%)";
   if (latencyMs <= 100) return "hsl(120, 60%, 35%)";
@@ -263,6 +286,12 @@ interface HeatmapBucket {
   count: number;
 }
 
+/**
+ * Divide the selected time window into fixed-size buckets and compute the
+ * average latency within each bucket.  Bucket size adapts to the time range
+ * (5 min for 1 H, up to 2 h for 7 D) so the grid stays a reasonable width.
+ * Returns -1 for avgLatency when a bucket has no data points.
+ */
 function buildHeatmapBuckets(data: MetricsSnapshot[], hours: number): HeatmapBucket[] {
   if (!data.length) return [];
 

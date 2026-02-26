@@ -1,3 +1,12 @@
+/**
+ * Comparison Page — Side-by-side multi-node comparison table.
+ *
+ * Fetches GET /api/nodes/compare which returns live status for all saved nodes.
+ * Renders a horizontally-scrollable table with one column per node and rows for
+ * status, server state, host, version, latency, peers, ledger seq, ledger age,
+ * uptime, and load factor.  Color-coded cell values highlight health at a glance.
+ * If no nodes are saved, shows a prompt linking to the Settings page.
+ */
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +54,7 @@ function formatUptime(seconds: number): string {
   return `${m}m`;
 }
 
+/** Renders a single cell in the comparison table with metric-specific formatting and color. */
 function CellValue({ node, metricKey }: { node: ComparedNode; metricKey: string }) {
   const value = node[metricKey as keyof ComparedNode];
 

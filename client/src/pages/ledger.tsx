@@ -1,3 +1,16 @@
+/**
+ * Ledger Explorer Page — Displays the latest validated ledger details.
+ *
+ * Components:
+ * - LedgerDetailCard: Shows ledger index, hash, close time, tx count,
+ *   plus parent/account/tx hashes and total coin supply.
+ * - RecentLedgersTable: Generates a list of the 10 most recent ledger indices
+ *   (derived from the current index minus offsets — not individually fetched).
+ * - CloseTimeChart: Area chart of recent ledger close times, using the last
+ *   1 hour of MetricsSnapshot data from the history endpoint.
+ *
+ * The page polls GET /api/node/ledger every 5 seconds.
+ */
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +31,7 @@ function formatHash(hash: string): string {
   return hash.slice(0, 8) + "..." + hash.slice(-8);
 }
 
+/** Convert XRPL epoch (seconds since 2000-01-01) to a locale date string. */
 function formatCloseTime(closeTime: number): string {
   if (!closeTime) return "N/A";
   const rippleEpoch = 946684800;
@@ -182,6 +196,7 @@ function RecentLedgersTable({ currentLedger }: { currentLedger: LedgerInfo }) {
   );
 }
 
+/** Area chart showing ledger close times from the last hour of metrics history. */
 function CloseTimeChart() {
   const { data: snapshots } = useQuery<MetricsSnapshot[]>({
     queryKey: [`/api/metrics/history?hours=1`],

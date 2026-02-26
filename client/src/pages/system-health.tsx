@@ -1,3 +1,15 @@
+/**
+ * System Health Page — Real-time host-machine diagnostics.
+ *
+ * Cards:
+ * - CPU: circular gauge for current load, model, core count, load average
+ * - Memory: circular gauge + ResourceBar for RAM usage
+ * - Disk: per-partition usage bars
+ * - Network I/O: live-updating stacked area chart (RX/TX bytes/sec), built from
+ *   a rolling buffer of the last 30 data points (polled every 3 s)
+ * - System Uptime: large digital clock-style display (DD:HH:MM)
+ * - OS Information: platform, hostname, kernel, architecture
+ */
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,6 +54,7 @@ interface NetworkDataPoint {
   txSec: number;
 }
 
+/** Rolling buffer depth for the network I/O chart (one point every ~3 s). */
 const MAX_NETWORK_POINTS = 30;
 
 const containerVariants = {

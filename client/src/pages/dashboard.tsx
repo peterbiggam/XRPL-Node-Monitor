@@ -1,3 +1,16 @@
+/**
+ * Dashboard Page — The main "command center" view for the XRPL node monitor.
+ *
+ * Displays:
+ * - Composite health score gauge (SVG ring with animated score counter)
+ * - Node status, latest ledger, network peers, and performance metric cards
+ * - TPS (transactions per second) and ledger-lag cards
+ * - Recent ledger hash data stream
+ * - Disconnected banner when the node is unreachable
+ *
+ * Data is polled from several API endpoints at 5–10 s intervals.
+ * Sparkline charts and the health gauge animate on each new data point.
+ */
 import { useQuery } from "@tanstack/react-query";
 import { MetricCard } from "@/components/metric-card";
 import { StatusIndicator } from "@/components/status-indicator";
@@ -21,6 +34,8 @@ import {
 import { useState, useRef, useCallback, useEffect, useId, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { NodeInfo, LedgerInfo } from "@shared/schema";
+
+// --- API response type contracts ---
 
 interface NodeResponse {
   status: string;
@@ -58,6 +73,8 @@ interface LedgerLagResponse {
   synced: boolean;
 }
 
+// --- Utility helpers ---
+
 function formatUptime(seconds: number): string {
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
@@ -71,12 +88,14 @@ function formatNumber(num: number): string {
   return num.toLocaleString();
 }
 
+/** Map rippled server_state to a UI status category. */
 function getServerStateStatus(state: string): "synced" | "syncing" | "disconnected" {
   if (state === "full" || state === "proposing" || state === "validating") return "synced";
   if (state === "connected" || state === "syncing" || state === "tracking") return "syncing";
   return "disconnected";
 }
 
+/** Infer network type (Mainnet / Testnet) from the first ledger index in the range. */
 function getNetworkType(completeLedgers: string): string {
   if (!completeLedgers) return "Unknown";
   const firstLedger = parseInt(completeLedgers.split("-")[0]);
@@ -84,6 +103,8 @@ function getNetworkType(completeLedgers: string): string {
   if (firstLedger <= 1000) return "Testnet / Devnet";
   return "Network";
 }
+
+// --- Framer Motion stagger variants for card entrance animations ---
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -97,6 +118,8 @@ const itemVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
 };
+
+// --- Health score color helpers (green/yellow/red thresholds) ---
 
 function getHealthColor(score: number): string {
   if (score >= 80) return "hsl(142, 76%, 46%)";
@@ -116,6 +139,14 @@ function getHealthLabel(score: number): string {
   return "CRITICAL";
 }
 
+/**
+ * HealthScoreGauge — Renders a circular SVG gauge with animated score counter.
+ * Uses strokeDashoffset to draw a partial arc proportional to the health score.
+ * The score animates from the previous value to the new one over 700 ms using
+ * requestAnimationFrame with a cubic ease-out curve.
+ * Tick marks around the perimeter give a "sci-fi instrument" feel.
+ * Below the gauge, individual health components are shown as labelled progress bars.
+ */
 function HealthScoreGauge({ data }: { data: HealthScoreResponse }) {
   const size = 180;
   const strokeWidth = 12;
@@ -318,6 +349,7 @@ function HealthScoreGauge({ data }: { data: HealthScoreResponse }) {
   );
 }
 
+/** Placeholder skeleton shown while initial data is loading. */
 function DashboardSkeleton() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -340,6 +372,7 @@ function DashboardSkeleton() {
   );
 }
 
+/** Full-width alert banner shown when the XRPL node is unreachable. */
 function DisconnectedBanner({ message }: { message?: string }) {
   return (
     <motion.div
@@ -382,6 +415,7 @@ function DisconnectedBanner({ message }: { message?: string }) {
   );
 }
 
+/** Displays a rolling list of the most recent ledger hashes (newest first). */
 function DataStreamSection({ hashes }: { hashes: string[] }) {
   if (hashes.length === 0) return null;
 
@@ -412,6 +446,18 @@ function DataStreamSection({ hashes }: { hashes: string[] }) {
   );
 }
 
+/**
+ * DashboardPage — Root component for the dashboard route.
+ *
+ * Manages three rolling buffers (refs + state) for sparkline data:
+ *   closeTimesRef  — ledger close times for the performance sparkline
+ *   ledgerSeqsRef  — sequential ledger indices for the ledger sparkline
+ *   ledgerHashesRef — recent hashes for the data stream section
+ *
+ * Each buffer keeps the last 20 entries; hashes keep the last 6.
+ * New data is appended only when the ledger sequence actually changes,
+ * avoiding duplicates from repeated polling.
+ */
 export default function DashboardPage() {
   const closeTimesRef = useRef<number[]>([]);
   const ledgerSeqsRef = useRef<number[]>([]);

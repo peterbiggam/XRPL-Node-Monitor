@@ -1,3 +1,6 @@
+// Storage layer — abstracts all database CRUD behind the IStorage interface.
+// DatabaseStorage is the concrete implementation backed by PostgreSQL via Drizzle ORM.
+
 import { eq, desc, gte, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
@@ -25,25 +28,32 @@ import {
   webhookConfigs,
 } from "@shared/schema";
 
+// IStorage defines every data operation the application needs.
+// This allows swapping implementations (e.g. in-memory for testing) without changing routes.
 export interface IStorage {
+  // Connection config — in-memory XRPL node target (overridden by active saved node)
   getConnectionConfig(): Promise<ConnectionConfig>;
   setConnectionConfig(config: ConnectionConfig): Promise<ConnectionConfig>;
 
+  // Metrics snapshots — time-series system + node health readings
   addMetricsSnapshot(snapshot: InsertMetricsSnapshot): Promise<MetricsSnapshot>;
   getMetricsHistory(hours: number): Promise<MetricsSnapshot[]>;
   cleanOldMetrics(days: number): Promise<void>;
 
+  // Alerts — threshold-breach notifications
   getAlerts(limit?: number): Promise<Alert[]>;
   getUnacknowledgedAlerts(): Promise<Alert[]>;
   createAlert(alert: InsertAlert): Promise<Alert>;
   acknowledgeAlert(id: number): Promise<Alert | null>;
   getRecentAlertByType(type: string, minutes: number): Promise<Alert | null>;
 
+  // Alert thresholds — per-metric warning/critical limits
   getAlertThresholds(): Promise<AlertThreshold[]>;
   getAlertThreshold(id: number): Promise<AlertThreshold | null>;
   updateAlertThreshold(id: number, data: Partial<InsertAlertThreshold>): Promise<AlertThreshold | null>;
   seedDefaultThresholds(): Promise<void>;
 
+  // Saved nodes — multi-node management with one active node at a time
   getSavedNodes(): Promise<SavedNode[]>;
   getSavedNode(id: number): Promise<SavedNode | null>;
   createSavedNode(node: InsertSavedNode): Promise<SavedNode>;
@@ -52,14 +62,17 @@ export interface IStorage {
   setActiveNode(id: number): Promise<SavedNode | null>;
   getActiveNode(): Promise<SavedNode | null>;
 
+  // AI conversations — LM Studio chat history grouped by session
   getAiConversations(sessionId: string): Promise<AiConversation[]>;
   getAiSessions(): Promise<{ sessionId: string; lastMessage: string; timestamp: Date }[]>;
   addAiMessage(message: InsertAiConversation): Promise<AiConversation>;
   clearAiSession(sessionId: string): Promise<void>;
 
+  // AI config — LM Studio connection settings (singleton row)
   getAiConfig(): Promise<AiConfig | null>;
   setAiConfig(config: InsertAiConfig): Promise<AiConfig>;
 
+  // Webhook configs — notification endpoint CRUD
   getWebhookConfigs(): Promise<WebhookConfig[]>;
   getWebhookConfig(id: number): Promise<WebhookConfig | null>;
   createWebhookConfig(config: InsertWebhookConfig): Promise<WebhookConfig>;
@@ -69,6 +82,8 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // In-memory fallback connection config, used when no saved node is active.
+  // Initialized from XRPL_* env vars (defaults to localhost with standard rippled ports).
   private connectionConfig: ConnectionConfig;
 
   constructor() {
@@ -78,9 +93,12 @@ export class DatabaseStorage implements IStorage {
       httpPort: parseInt(process.env.XRPL_HTTP_PORT || "5005", 10),
       adminPort: parseInt(process.env.XRPL_ADMIN_PORT || "8080", 10),
     };
+    // Seed AI config from LM_STUDIO_URL env var if no config exists yet
     this.seedAiConfigFromEnv();
   }
 
+  // Auto-creates an AI config row from the LM_STUDIO_URL environment variable
+  // on first startup, so users don't have to configure it manually in the UI.
   private async seedAiConfigFromEnv() {
     if (process.env.LM_STUDIO_URL) {
       try {
@@ -97,6 +115,8 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  // Returns connection config for the currently active node.
+  // If a saved node is marked active, its settings override the in-memory defaults.
   async getConnectionConfig(): Promise<ConnectionConfig> {
     const activeNode = await this.getActiveNode();
     if (activeNode) {
@@ -120,11 +140,13 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  // Returns snapshots from the last N hours, ordered chronologically for charting
   async getMetricsHistory(hours: number): Promise<MetricsSnapshot[]> {
     const since = new Date(Date.now() - hours * 60 * 60 * 1000);
     return db.select().from(metricsSnapshots).where(gte(metricsSnapshots.timestamp, since)).orderBy(metricsSnapshots.timestamp);
   }
 
+  // Deletes snapshots older than N days to prevent unbounded table growth
   async cleanOldMetrics(days: number): Promise<void> {
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     await db.delete(metricsSnapshots).where(sql`${metricsSnapshots.timestamp} < ${cutoff}`);
@@ -148,6 +170,8 @@ export class DatabaseStorage implements IStorage {
     return result || null;
   }
 
+  // Checks if an alert of the same type was already fired within the last N minutes.
+  // Used to suppress duplicate alerts and avoid notification spam.
   async getRecentAlertByType(type: string, minutes: number): Promise<Alert | null> {
     const since = new Date(Date.now() - minutes * 60 * 1000);
     const results = await db.select().from(alerts)
@@ -171,6 +195,8 @@ export class DatabaseStorage implements IStorage {
     return result || null;
   }
 
+  // Inserts default alert thresholds on first run (CPU, memory, peers, ledger age).
+  // Skipped if any thresholds already exist, so user customizations are preserved.
   async seedDefaultThresholds(): Promise<void> {
     const existing = await this.getAlertThresholds();
     if (existing.length > 0) return;
@@ -184,6 +210,8 @@ export class DatabaseStorage implements IStorage {
 
     await db.insert(alertThresholds).values(defaults);
   }
+
+  // --- Saved Node CRUD ---
 
   async getSavedNodes(): Promise<SavedNode[]> {
     return db.select().from(savedNodes);
@@ -209,6 +237,8 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
+  // Activates a node by deactivating all others first (only one active at a time).
+  // Also updates the in-memory connectionConfig so subsequent requests target the new node.
   async setActiveNode(id: number): Promise<SavedNode | null> {
     await db.update(savedNodes).set({ isActive: false }).where(eq(savedNodes.isActive, true));
     const [result] = await db.update(savedNodes).set({ isActive: true }).where(eq(savedNodes.id, id)).returning();
@@ -228,12 +258,16 @@ export class DatabaseStorage implements IStorage {
     return results[0] || null;
   }
 
+  // --- AI Conversation methods ---
+
   async getAiConversations(sessionId: string): Promise<AiConversation[]> {
     return db.select().from(aiConversations)
       .where(eq(aiConversations.sessionId, sessionId))
       .orderBy(aiConversations.timestamp);
   }
 
+  // Returns a summary of each unique session (last user message + timestamp)
+  // using DISTINCT ON to pick the most recent user message per session.
   async getAiSessions(): Promise<{ sessionId: string; lastMessage: string; timestamp: Date }[]> {
     const results = await db.execute(sql`
       SELECT DISTINCT ON (session_id) session_id, content, timestamp
@@ -257,11 +291,14 @@ export class DatabaseStorage implements IStorage {
     await db.delete(aiConversations).where(eq(aiConversations.sessionId, sessionId));
   }
 
+  // --- AI Config (singleton) ---
+
   async getAiConfig(): Promise<AiConfig | null> {
     const results = await db.select().from(aiConfig).limit(1);
     return results[0] || null;
   }
 
+  // Upserts the AI config — updates the existing row if one exists, otherwise inserts.
   async setAiConfig(config: InsertAiConfig): Promise<AiConfig> {
     const existing = await this.getAiConfig();
     if (existing) {
@@ -271,6 +308,9 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db.insert(aiConfig).values(config).returning();
     return result;
   }
+
+  // --- Webhook Config CRUD ---
+
   async getWebhookConfigs(): Promise<WebhookConfig[]> {
     return db.select().from(webhookConfigs);
   }
@@ -295,10 +335,13 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
+  // Filters enabled webhooks whose events array includes the given event string.
+  // Note: uses in-memory filtering because Drizzle doesn't natively support array-contains queries.
   async getEnabledWebhooksForEvent(event: string): Promise<WebhookConfig[]> {
     const all = await db.select().from(webhookConfigs).where(eq(webhookConfigs.enabled, true));
     return all.filter(w => w.events && w.events.includes(event));
   }
 }
 
+// Singleton storage instance used throughout the application
 export const storage = new DatabaseStorage();

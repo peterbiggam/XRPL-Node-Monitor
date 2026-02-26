@@ -1,3 +1,11 @@
+/**
+ * App.tsx — Root application component for XRPL Node Monitor.
+ *
+ * Wires up global providers (theme, react-query, tooltip), the sidebar layout,
+ * top header bar (clock, connection badge, sound/fullscreen/theme toggles),
+ * client-side routing via wouter, and vim-style keyboard shortcuts (g+key nav).
+ */
+
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -29,6 +37,7 @@ import HistoryPage from "@/pages/history";
 import ExplorerPage from "@/pages/explorer";
 import ComparisonPage from "@/pages/comparison";
 
+/** Header clock — updates every second, displays 24-hour format. */
 function LiveClock() {
   const [time, setTime] = useState(() => new Date());
 
@@ -54,6 +63,7 @@ function LiveClock() {
   );
 }
 
+/** Toggles browser fullscreen mode via the Fullscreen API. */
 function FullscreenToggle() {
   const [isFs, setIsFs] = useState(false);
 
@@ -83,6 +93,7 @@ function FullscreenToggle() {
   );
 }
 
+/** Toggles UI sound effects on/off; state persisted in localStorage. */
 function SoundToggle() {
   const [enabled, setEnabled] = useState(() => isSoundEnabled());
 
@@ -104,6 +115,11 @@ function SoundToggle() {
   );
 }
 
+/**
+ * Polls /api/node/info every 10s to display a Connected/Disconnected badge.
+ * Plays audio cues when connection state transitions (lost / restored),
+ * using a ref to track the previous state and avoid playing on first render.
+ */
 function ConnectionStatus() {
   const { data, isError } = useQuery<{ status: string; data: unknown }>({
     queryKey: ["/api/node/info"],
@@ -142,6 +158,7 @@ function ConnectionStatus() {
   );
 }
 
+/** Client-side route definitions — each path maps to a page component. */
 function Router() {
   return (
     <Switch>
@@ -162,6 +179,7 @@ function Router() {
   );
 }
 
+/** Vim-style two-key navigation: press "g" then a letter to jump to a page. */
 const SHORTCUT_NAV: Record<string, string> = {
   d: "/",
   h: "/history",
@@ -174,6 +192,7 @@ const SHORTCUT_NAV: Record<string, string> = {
   c: "/comparison",
 };
 
+/** Displayed in the keyboard shortcuts modal for user reference. */
 const SHORTCUTS_HELP = [
   { keys: "g d", desc: "Dashboard" },
   { keys: "g h", desc: "Metrics History" },
@@ -188,6 +207,7 @@ const SHORTCUTS_HELP = [
   { keys: "?", desc: "Show/Hide Shortcuts" },
 ];
 
+/** Full-screen overlay listing all keyboard shortcuts; toggled with "?". */
 function ShortcutsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   if (!open) return null;
 
@@ -237,6 +257,14 @@ function ShortcutsModal({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
+/**
+ * Global keyboard shortcut handler.
+ * - "?" toggles the shortcuts help modal.
+ * - "f" toggles fullscreen.
+ * - "g" starts a two-key chord: pressing a nav letter within 1 second
+ *   navigates to the corresponding page (e.g. "g d" → Dashboard).
+ * Ignores keypresses when focus is inside input/textarea fields.
+ */
 function useKeyboardShortcuts() {
   const [, setLocation] = useLocation();
   const [showHelp, setShowHelp] = useState(false);
@@ -299,6 +327,7 @@ function useKeyboardShortcuts() {
   return { showHelp, setShowHelp };
 }
 
+/** Main layout shell: animated background, sidebar, header bar, and routed content area. */
 function AppContent() {
   const { showHelp, setShowHelp } = useKeyboardShortcuts();
 
@@ -345,6 +374,7 @@ function AppContent() {
   );
 }
 
+/** Root component — wraps the app in ThemeProvider, QueryClientProvider, and TooltipProvider. */
 export default function App() {
   return (
     <ThemeProvider>

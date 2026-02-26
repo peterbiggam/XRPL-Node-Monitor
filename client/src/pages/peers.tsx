@@ -1,3 +1,17 @@
+/**
+ * Peers Page — Visualises the node's peer connections in three tabs.
+ *
+ * Tabs:
+ * 1. Graph — Force-directed SVG network graph. Inbound peers cluster left,
+ *    outbound cluster right. Spring + repulsion physics run for 200 iterations
+ *    via requestAnimationFrame.  Hovering a node shows a tooltip with peer details.
+ * 2. Table — Sortable data table with IP (partially masked), version, uptime, latency.
+ * 3. Map — Geolocation map rendered with a simplified SVG world outline.
+ *    Peer dots are plotted via Mercator projection; a "Top Countries" bar chart
+ *    is shown alongside.
+ *
+ * Also includes a donut chart of peer version distribution.
+ */
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +36,7 @@ interface PeersResponse {
   message?: string;
 }
 
+/** Partially mask an IP:port string for privacy (e.g. "192.168.***.***:51235"). */
 function maskAddress(address: string): string {
   if (!address) return "N/A";
   const parts = address.split(":");
@@ -70,6 +85,7 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
 };
 
+/** A node in the force-directed graph — either the center "YOUR NODE" or a peer. */
 interface GraphNode {
   id: string;
   x: number;
@@ -115,6 +131,7 @@ function PeerSummary({ peers }: { peers: PeerInfo[] }) {
   );
 }
 
+/** Generate an SVG path for a regular hexagon centered at (cx, cy) with radius r. */
 function hexagonPath(cx: number, cy: number, r: number): string {
   const points: string[] = [];
   for (let i = 0; i < 6; i++) {
@@ -124,6 +141,12 @@ function hexagonPath(cx: number, cy: number, r: number): string {
   return `M${points.join("L")}Z`;
 }
 
+/**
+ * PeerNetworkGraph — Force-directed SVG visualisation of peer connections.
+ * Runs a physics simulation (spring toward center + peer repulsion) for 200
+ * iterations, updating node positions each frame.  Inbound peers are biased
+ * to the left half; outbound to the right.
+ */
 function PeerNetworkGraph({ peers }: { peers: PeerInfo[] }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const animFrameRef = useRef<number>(0);
@@ -496,6 +519,7 @@ function PeerNetworkGraph({ peers }: { peers: PeerInfo[] }) {
   );
 }
 
+/** Donut chart showing the distribution of rippled versions across peers. */
 function VersionDistribution({ peers }: { peers: PeerInfo[] }) {
   const versionCounts = useMemo(() => {
     const counts: Record<string, number> = {};

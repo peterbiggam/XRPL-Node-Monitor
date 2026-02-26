@@ -1,3 +1,16 @@
+/**
+ * Alerts Page — Threshold configuration and alert history viewer.
+ *
+ * Sections:
+ * 1. Threshold Configuration — editable warning/critical values per metric
+ *    (cpu, memory, peers, ledger_age) with enable/disable toggles.
+ *    Values are saved on blur via PUT /api/alerts/thresholds/:id.
+ * 2. Alert History — list of triggered alerts, split into active (un-acked)
+ *    and acknowledged. Each alert can be acknowledged via POST.
+ *
+ * Toast notifications are shown when a new unacknowledged alert appears
+ * (tracked by comparing the count between polls using a ref).
+ */
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +36,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Alert, AlertThreshold } from "@shared/schema";
 
+/** Metric → icon mapping for threshold and alert display. */
 const metricIcons: Record<string, typeof Cpu> = {
   cpu: Cpu,
   memory: HardDrive,
@@ -49,6 +63,7 @@ function formatTimestamp(ts: string | Date): string {
   });
 }
 
+/** Single alert card with severity badge, timestamp, value/threshold, and acknowledge button. */
 function AlertRow({ alert, onAcknowledge, isPending }: {
   alert: Alert;
   onAcknowledge: (id: number) => void;
@@ -146,6 +161,11 @@ function AlertRow({ alert, onAcknowledge, isPending }: {
   );
 }
 
+/**
+ * ThresholdRow — Inline editor for a single alert threshold.
+ * Warning and critical inputs commit on blur if the value changed.
+ * The Switch toggles the threshold enabled state immediately.
+ */
 function ThresholdRow({ threshold, onUpdate }: {
   threshold: AlertThreshold;
   onUpdate: (id: number, data: Partial<AlertThreshold>) => void;
