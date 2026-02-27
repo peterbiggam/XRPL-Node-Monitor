@@ -37,11 +37,6 @@ eval "$(node -e "
   }
 ")"
 
-if [ -z "$DATABASE_URL" ]; then
-  echo -e "${RED}[ERROR]${NC} DATABASE_URL is not set in .env"
-  exit 1
-fi
-
 if [[ "$1" == "--prod" || "$1" == "--production" ]]; then
   echo -e "${CYAN}[XRPL Monitor]${NC} Building for production..."
   npm run build

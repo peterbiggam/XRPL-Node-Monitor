@@ -1,35 +1,103 @@
-// Database connection module — supports two PostgreSQL drivers:
-// 1. Neon serverless driver (used when DATABASE_URL points to a Neon-hosted DB)
-// 2. Standard node-postgres (pg) driver (used for self-hosted / Docker PostgreSQL)
-// The driver is auto-detected based on the DATABASE_URL hostname.
+// Database connection module — uses SQLite via better-sqlite3.
+// The database file path is configurable via DATABASE_PATH env var,
+// defaulting to ./data/xrpl-monitor.db. The data directory is auto-created.
+// Tables are auto-created on startup if they don't exist.
 
-import { drizzle as drizzleNeon } from "drizzle-orm/neon-serverless";
-import { drizzle as drizzleNode } from "drizzle-orm/node-postgres";
-import pg from "pg";
-import ws from "ws";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import Database from "better-sqlite3";
 import * as schema from "@shared/schema";
+import { mkdirSync } from "fs";
+import { dirname } from "path";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
-}
+const dbPath = process.env.DATABASE_PATH || "./data/xrpl-monitor.db";
 
-// Detect Neon-hosted databases by checking for "neon.tech" or "neon-" in the connection string.
-// Neon requires the WebSocket-based driver since it doesn't support raw TCP connections.
-const isNeon = process.env.DATABASE_URL.includes("neon.tech") || process.env.DATABASE_URL.includes("neon-");
+mkdirSync(dirname(dbPath), { recursive: true });
 
-let db: any;
+const sqlite = new Database(dbPath);
 
-if (isNeon) {
-  // Neon serverless driver — uses WebSocket transport instead of TCP
-  db = drizzleNeon({
-    connection: process.env.DATABASE_URL,
-    schema,
-    ws,
-  });
-} else {
-  // Standard pg driver — uses a connection pool for concurrent queries
-  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-  db = drizzleNode({ client: pool, schema });
-}
+sqlite.pragma("journal_mode = WAL");
+sqlite.pragma("busy_timeout = 5000");
+sqlite.pragma("foreign_keys = ON");
 
-export { db };
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS metrics_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER NOT NULL DEFAULT (unixepoch()),
+    node_host TEXT,
+    cpu_load REAL,
+    memory_percent REAL,
+    peer_count INTEGER,
+    ledger_index INTEGER,
+    close_time_ms REAL,
+    load_factor REAL,
+    server_state TEXT,
+    node_latency_ms REAL,
+    reserve_base REAL,
+    reserve_inc REAL,
+    base_fee REAL,
+    tps REAL
+  );
+
+  CREATE TABLE IF NOT EXISTS webhook_configs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'discord',
+    url TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    events TEXT NOT NULL DEFAULT '["alert_critical","alert_warning","connection_lost"]'
+  );
+
+  CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER NOT NULL DEFAULT (unixepoch()),
+    type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    message TEXT NOT NULL,
+    value REAL,
+    threshold REAL,
+    acknowledged INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS alert_thresholds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    metric TEXT NOT NULL UNIQUE,
+    warning_value REAL NOT NULL,
+    critical_value REAL NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    direction TEXT NOT NULL DEFAULT 'above'
+  );
+
+  CREATE TABLE IF NOT EXISTS saved_nodes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    host TEXT NOT NULL DEFAULT 'localhost',
+    ws_port INTEGER NOT NULL DEFAULT 6006,
+    http_port INTEGER NOT NULL DEFAULT 5005,
+    admin_port INTEGER NOT NULL DEFAULT 8080,
+    is_active INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS ai_conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER NOT NULL DEFAULT (unixepoch()),
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    context TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS ai_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    host TEXT NOT NULL DEFAULT 'localhost',
+    port INTEGER NOT NULL DEFAULT 1234,
+    model TEXT DEFAULT ''
+  );
+`);
+
+export const db = drizzle(sqlite, { schema });

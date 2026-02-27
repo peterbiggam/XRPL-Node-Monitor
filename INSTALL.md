@@ -2,7 +2,7 @@
 
 ## Docker (Easiest — Recommended)
 
-Docker handles everything for you — the app, database, and all dependencies in one command.
+Docker handles everything for you — the app and all dependencies in one command. No database setup needed — SQLite is built in.
 
 ### Prerequisites
 
@@ -78,9 +78,14 @@ LM_STUDIO_URL: http://host.docker.internal:1234
 
 Make sure LM Studio's local server is running (start it from within LM Studio). The monitor will auto-configure the AI connection on first startup.
 
-### Customization
+### Data Persistence
 
-To change the database password or app port, edit `docker-compose.yml` before the first run. The default database credentials are only accessible from within Docker's network, not exposed to the internet.
+The SQLite database is stored in a Docker volume (`appdata`), so your data persists across restarts and rebuilds.
+
+To back up the database:
+```bash
+docker cp $(docker compose ps -q app):/app/data/xrpl-monitor.db ./backup.db
+```
 
 ---
 
@@ -91,7 +96,8 @@ If you prefer running directly on your machine without Docker.
 ### Prerequisites
 
 1. **Node.js** (version 18 or newer) — [Download here](https://nodejs.org)
-2. **PostgreSQL** database — either installed locally or a free cloud database
+
+That's all you need. The app uses SQLite, which is bundled automatically — no separate database install required.
 
 #### Installing Node.js
 
@@ -101,26 +107,6 @@ If you prefer running directly on your machine without Docker.
 | **macOS** | `brew install node` or download from [nodejs.org](https://nodejs.org) |
 | **Ubuntu/Debian** | `curl -fsSL https://deb.nodesource.com/setup_20.x \| sudo -E bash - && sudo apt-get install -y nodejs` |
 | **Fedora** | `sudo dnf install -y nodejs` |
-
-#### Setting Up PostgreSQL
-
-**Option A — Local install:**
-
-| Platform | Command |
-|----------|---------|
-| **Windows** | `winget install PostgreSQL.PostgreSQL` or download from [postgresql.org](https://www.postgresql.org/download/windows/) |
-| **macOS** | `brew install postgresql@16 && brew services start postgresql@16` |
-| **Ubuntu/Debian** | `sudo apt-get install -y postgresql postgresql-client` |
-| **Fedora** | `sudo dnf install -y postgresql-server postgresql` then `sudo postgresql-setup --initdb && sudo systemctl start postgresql` |
-
-After installing, create a database:
-```
-psql -U postgres -c "CREATE DATABASE xrpl_monitor;"
-```
-
-**Option B — Free cloud database (no install needed):**
-
-Sign up at [neon.tech](https://neon.tech) and create a free PostgreSQL database. Copy the connection string they provide.
 
 ### Quick Start
 
@@ -174,21 +160,17 @@ If you prefer to set things up manually:
 
 3. **Edit `.env`** and set your values:
    ```
-   DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/xrpl_monitor
    SESSION_SECRET=any-random-string-here
    ```
 
-4. **Initialize the database:**
-   ```bash
-   npm run db:push
-   ```
-
-5. **Start the app:**
+4. **Start the app:**
    ```bash
    npm run dev
    ```
 
-6. Open **http://localhost:5000** in your browser.
+5. Open **http://localhost:5000** in your browser.
+
+The SQLite database is automatically created at `./data/xrpl-monitor.db` on first run.
 
 ---
 
@@ -198,8 +180,8 @@ If you prefer to set things up manually:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string |
 | `SESSION_SECRET` | Yes | — | Random string for session encryption |
+| `DATABASE_PATH` | No | `./data/xrpl-monitor.db` | Path to SQLite database file |
 | `PORT` | No | `5000` | Port the server runs on |
 
 ### Connecting to Your XRPL Node
@@ -242,19 +224,11 @@ npm start
 ## Troubleshooting
 
 ### Docker: "port is already allocated"
-Another service is using port 5000 or 5432. Either stop that service or change the ports in `docker-compose.yml`:
+Another service is using port 5000. Either stop that service or change the ports in `docker-compose.yml`:
 ```yaml
 ports:
   - "3000:5000"   # Use port 3000 instead
 ```
-
-### "DATABASE_URL, ensure the database is provisioned"
-Your `DATABASE_URL` environment variable is not set or the `.env` file is missing. Make sure you've created `.env` with a valid PostgreSQL connection string.
-
-### "npm run db:push" fails
-- Verify PostgreSQL is running: `psql -U postgres -c "SELECT 1;"`
-- Check that the database exists: `psql -U postgres -c "\l"` and look for your database name
-- Verify your `DATABASE_URL` is correct in `.env`
 
 ### Port 5000 is already in use
 Set a different port in `.env`:

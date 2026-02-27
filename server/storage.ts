@@ -1,5 +1,5 @@
 // Storage layer — abstracts all database CRUD behind the IStorage interface.
-// DatabaseStorage is the concrete implementation backed by PostgreSQL via Drizzle ORM.
+// DatabaseStorage is the concrete implementation backed by SQLite via Drizzle ORM.
 
 import { eq, desc, gte, and, sql } from "drizzle-orm";
 import { db } from "./db";
@@ -81,6 +81,23 @@ export interface IStorage {
   getEnabledWebhooksForEvent(event: string): Promise<WebhookConfig[]>;
 }
 
+// Helper: parse the events JSON text column into a string array
+function parseEvents(events: string | null): string[] {
+  if (!events) return [];
+  try {
+    return JSON.parse(events);
+  } catch {
+    return [];
+  }
+}
+
+// Helper: ensure events is a JSON string for storage
+function serializeEvents(events: string | string[] | null | undefined): string {
+  if (!events) return '["alert_critical","alert_warning","connection_lost"]';
+  if (typeof events === "string") return events;
+  return JSON.stringify(events);
+}
+
 export class DatabaseStorage implements IStorage {
   // In-memory fallback connection config, used when no saved node is active.
   // Initialized from XRPL_* env vars (defaults to localhost with standard rippled ports).
@@ -93,7 +110,6 @@ export class DatabaseStorage implements IStorage {
       httpPort: parseInt(process.env.XRPL_HTTP_PORT || "5005", 10),
       adminPort: parseInt(process.env.XRPL_ADMIN_PORT || "8080", 10),
     };
-    // Seed AI config from LM_STUDIO_URL env var if no config exists yet
     this.seedAiConfigFromEnv();
   }
 
@@ -149,7 +165,7 @@ export class DatabaseStorage implements IStorage {
   // Deletes snapshots older than N days to prevent unbounded table growth
   async cleanOldMetrics(days: number): Promise<void> {
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    await db.delete(metricsSnapshots).where(sql`${metricsSnapshots.timestamp} < ${cutoff}`);
+    await db.delete(metricsSnapshots).where(sql`${metricsSnapshots.timestamp} < ${cutoff.getTime() / 1000}`);
   }
 
   async getAlerts(limit = 100): Promise<Alert[]> {
@@ -266,19 +282,24 @@ export class DatabaseStorage implements IStorage {
       .orderBy(aiConversations.timestamp);
   }
 
-  // Returns a summary of each unique session (last user message + timestamp)
-  // using DISTINCT ON to pick the most recent user message per session.
+  // Returns a summary of each unique session (last user message + timestamp).
+  // Uses GROUP BY + MAX since SQLite doesn't support DISTINCT ON.
   async getAiSessions(): Promise<{ sessionId: string; lastMessage: string; timestamp: Date }[]> {
     const results = await db.execute(sql`
-      SELECT DISTINCT ON (session_id) session_id, content, timestamp
-      FROM ai_conversations
-      WHERE role = 'user'
-      ORDER BY session_id, timestamp DESC
+      SELECT ac.session_id, ac.content, ac.timestamp
+      FROM ai_conversations ac
+      INNER JOIN (
+        SELECT session_id, MAX(id) as max_id
+        FROM ai_conversations
+        WHERE role = 'user'
+        GROUP BY session_id
+      ) latest ON ac.id = latest.max_id
+      ORDER BY ac.timestamp DESC
     `);
     return (results.rows as any[]).map(r => ({
       sessionId: r.session_id,
       lastMessage: r.content,
-      timestamp: new Date(r.timestamp),
+      timestamp: new Date(typeof r.timestamp === "number" ? r.timestamp * 1000 : r.timestamp),
     }));
   }
 
@@ -310,24 +331,34 @@ export class DatabaseStorage implements IStorage {
   }
 
   // --- Webhook Config CRUD ---
+  // The events field is stored as a JSON string in SQLite.
+  // We parse it on read and serialize on write.
 
   async getWebhookConfigs(): Promise<WebhookConfig[]> {
-    return db.select().from(webhookConfigs);
+    const rows = await db.select().from(webhookConfigs);
+    return rows.map(r => ({ ...r, events: parseEvents(r.events as any) as any }));
   }
 
   async getWebhookConfig(id: number): Promise<WebhookConfig | null> {
     const [result] = await db.select().from(webhookConfigs).where(eq(webhookConfigs.id, id));
-    return result || null;
+    if (!result) return null;
+    return { ...result, events: parseEvents(result.events as any) as any };
   }
 
   async createWebhookConfig(config: InsertWebhookConfig): Promise<WebhookConfig> {
-    const [result] = await db.insert(webhookConfigs).values(config).returning();
-    return result;
+    const toInsert = { ...config, events: serializeEvents(config.events as any) };
+    const [result] = await db.insert(webhookConfigs).values(toInsert as any).returning();
+    return { ...result, events: parseEvents(result.events as any) as any };
   }
 
   async updateWebhookConfig(id: number, data: Partial<InsertWebhookConfig>): Promise<WebhookConfig | null> {
-    const [result] = await db.update(webhookConfigs).set(data).where(eq(webhookConfigs.id, id)).returning();
-    return result || null;
+    const toUpdate = { ...data };
+    if (toUpdate.events) {
+      (toUpdate as any).events = serializeEvents(toUpdate.events as any);
+    }
+    const [result] = await db.update(webhookConfigs).set(toUpdate as any).where(eq(webhookConfigs.id, id)).returning();
+    if (!result) return null;
+    return { ...result, events: parseEvents(result.events as any) as any };
   }
 
   async deleteWebhookConfig(id: number): Promise<boolean> {
@@ -335,11 +366,12 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  // Filters enabled webhooks whose events array includes the given event string.
-  // Note: uses in-memory filtering because Drizzle doesn't natively support array-contains queries.
+  // Filters enabled webhooks whose events include the given event string.
   async getEnabledWebhooksForEvent(event: string): Promise<WebhookConfig[]> {
     const all = await db.select().from(webhookConfigs).where(eq(webhookConfigs.enabled, true));
-    return all.filter(w => w.events && w.events.includes(event));
+    return all
+      .map(r => ({ ...r, events: parseEvents(r.events as any) as any }))
+      .filter(w => w.events && w.events.includes(event));
   }
 }
 

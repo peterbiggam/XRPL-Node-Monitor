@@ -6,7 +6,7 @@ A cross-platform XRPL (XRP Ledger) node monitoring dashboard with a cyberpunk/sc
 ## Architecture
 - **Frontend**: React + Vite with Tailwind CSS, Shadcn UI components, Recharts for data visualization
 - **Backend**: Express.js server with WebSocket proxy to XRPL node, systeminformation for system metrics
-- **Database**: PostgreSQL via @neondatabase/serverless + drizzle-orm for persistent storage
+- **Database**: SQLite via better-sqlite3 + drizzle-orm for persistent storage (zero-config, file-based)
 - **Real-time**: Polling-based updates (3-5 second intervals) for live data, SSE for AI streaming
 
 ## Key Features
@@ -50,7 +50,7 @@ client/src/
 server/
   routes.ts       - API routes for XRPL proxy, metrics, alerts, nodes, AI, export, webhooks, health score, ledger lag, TPS, UNL, peer geolocation, node comparison
   storage.ts      - DatabaseStorage class implementing IStorage interface
-  db.ts           - Drizzle ORM database connection (auto-detects Neon serverless or standard PostgreSQL)
+  db.ts           - Drizzle ORM database connection (SQLite via better-sqlite3, auto-creates tables)
 shared/
   schema.ts       - Drizzle tables, insert schemas (drizzle-zod), TypeScript types
 ```
@@ -97,5 +97,5 @@ shared/
 - ws — WebSocket client for XRPL node communication
 - recharts — Charts and data visualization
 - framer-motion — Page entrance animations and motion effects
-- @neondatabase/serverless + drizzle-orm — PostgreSQL database
+- better-sqlite3 + drizzle-orm — SQLite database (zero external deps)
 - drizzle-zod — Schema validation

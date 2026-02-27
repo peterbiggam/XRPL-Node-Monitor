@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/Node.js-20+-339933?logo=nodedotjs&logoColor=white" alt="Node.js" />
   <img src="https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black" alt="React" />
-  <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white" alt="SQLite" />
   <img src="https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white" alt="Docker" />
   <img src="https://img.shields.io/badge/XRPL-Mainnet%20%7C%20Testnet-00AAE4" alt="XRPL" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
@@ -49,7 +49,7 @@ XRPL Node Monitor provides comprehensive, real-time insight into your XRP Ledger
 |-------|-----------|
 | Frontend | React 18, Vite, Tailwind CSS, Shadcn/ui, Recharts, Framer Motion |
 | Backend | Express 5, WebSocket (`ws`), `systeminformation` |
-| Database | PostgreSQL 16 via Drizzle ORM (`@neondatabase/serverless` or `pg`) |
+| Database | SQLite via Drizzle ORM (`better-sqlite3`) |
 | Validation | Zod + `drizzle-zod` |
 | AI | LM Studio (local LLM) with Server-Sent Events streaming |
 | Routing | Wouter (frontend), Express (backend) |
@@ -69,11 +69,11 @@ XRPL Node Monitor provides comprehensive, real-time insight into your XRP Ledger
 └──────┬─────────────────────────────────┬────────────┘
        │ SQL (Drizzle ORM)               │ WebSocket
 ┌──────▼──────┐                  ┌───────▼────────┐
-│ PostgreSQL  │                  │  XRPL Node(s)  │
+│   SQLite    │                  │  XRPL Node(s)  │
 └─────────────┘                  └────────────────┘
 ```
 
-The backend acts as a thin proxy: it connects to your XRPL node over WebSocket, collects metrics on a 30-second interval, evaluates alert thresholds, dispatches webhooks, and persists snapshots to PostgreSQL. The frontend polls the REST API every 3-5 seconds for live updates and uses SSE for AI streaming responses.
+The backend acts as a thin proxy: it connects to your XRPL node over WebSocket, collects metrics on a 30-second interval, evaluates alert thresholds, dispatches webhooks, and persists snapshots to SQLite. The frontend polls the REST API every 3-5 seconds for live updates and uses SSE for AI streaming responses.
 
 ## Project Structure
 
@@ -138,7 +138,7 @@ cp .env.example .env          # edit credentials before first run
 docker compose up -d
 ```
 
-> **Security note:** The default `docker-compose.yml` uses placeholder credentials (`changeme`). Always edit your `.env` file and set strong values for `POSTGRES_PASSWORD` and `SESSION_SECRET` before running in any environment.
+> **Security note:** Edit your `.env` file and set a strong value for `SESSION_SECRET` before running in any environment.
 
 Open **http://localhost:5000** in your browser. See [INSTALL.md](INSTALL.md) for Docker networking details (connecting to your XRPL node, LM Studio, etc.).
 
@@ -148,10 +148,11 @@ Open **http://localhost:5000** in your browser. See [INSTALL.md](INSTALL.md) for
 git clone <your-repo-url> xrpl-monitor
 cd xrpl-monitor
 npm install
-cp .env.example .env        # edit with your DATABASE_URL
-npm run db:push              # initialize database schema
+cp .env.example .env        # edit SESSION_SECRET
 npm run dev                  # start dev server
 ```
+
+The SQLite database is automatically created on first run — no database setup needed.
 
 Open **http://localhost:5000**. See [INSTALL.md](INSTALL.md) for platform-specific instructions, script-based install, and production builds.
 
@@ -159,13 +160,13 @@ Open **http://localhost:5000**. See [INSTALL.md](INSTALL.md) for platform-specif
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string |
 | `SESSION_SECRET` | Yes | — | Random string for Express session encryption |
+| `DATABASE_PATH` | No | `./data/xrpl-monitor.db` | Path to SQLite database file |
 | `PORT` | No | `5000` | Server port |
-| `XRPL_HOST` | No | `host.docker.internal` | XRPL node hostname (Docker only) |
-| `XRPL_WS_PORT` | No | `6006` | XRPL WebSocket port (Docker only) |
-| `XRPL_HTTP_PORT` | No | `5005` | XRPL JSON-RPC port (Docker only) |
-| `XRPL_ADMIN_PORT` | No | `8080` | XRPL admin port (Docker only) |
+| `XRPL_HOST` | No | `localhost` | XRPL node hostname |
+| `XRPL_WS_PORT` | No | `6006` | XRPL WebSocket port |
+| `XRPL_HTTP_PORT` | No | `5005` | XRPL JSON-RPC port |
+| `XRPL_ADMIN_PORT` | No | `8080` | XRPL admin port |
 | `LM_STUDIO_URL` | No | — | LM Studio server URL for AI analysis |
 
 ## Configuration

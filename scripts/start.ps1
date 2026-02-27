@@ -38,12 +38,6 @@ foreach ($line in $envContent) {
     }
 }
 
-if (-not $env:DATABASE_URL) {
-    Write-Host "[ERROR] DATABASE_URL is not set in .env" -ForegroundColor Red
-    Write-Host "  Edit .env and add your PostgreSQL connection string." -ForegroundColor Yellow
-    exit 1
-}
-
 if ($Prod) {
     Write-Host "[XRPL Monitor] Building for production..." -ForegroundColor Cyan
     npm run build

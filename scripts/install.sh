@@ -75,27 +75,6 @@ else
   exit 1
 fi
 
-# ---- Check PostgreSQL ----
-if command -v psql &> /dev/null; then
-  ok "PostgreSQL client (psql) found"
-else
-  warn "PostgreSQL client (psql) not found on PATH."
-  echo ""
-  echo "  You need a PostgreSQL database. Options:"
-  echo "    1. Install PostgreSQL locally:"
-  if [[ "$OS" == "macos" ]]; then
-    echo "       brew install postgresql@16 && brew services start postgresql@16"
-  elif [[ "$OS" == "debian" ]]; then
-    echo "       sudo apt-get install -y postgresql postgresql-client"
-  elif [[ "$OS" == "fedora" ]]; then
-    echo "       sudo dnf install -y postgresql-server postgresql && sudo postgresql-setup --initdb && sudo systemctl start postgresql"
-  fi
-  echo "    2. Use a free cloud database: https://neon.tech (no install needed)"
-  echo ""
-  echo "  You can continue setup and configure DATABASE_URL in .env later."
-  echo ""
-fi
-
 # ---- Set up .env ----
 if [ -f .env ]; then
   ok ".env file already exists"
@@ -106,12 +85,11 @@ else
   else
     warn ".env.example not found — creating minimal .env"
     cat > .env << 'ENVEOF'
-DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/xrpl_monitor
 SESSION_SECRET=change-me-to-a-random-string
 ENVEOF
     ok "Created .env with defaults"
   fi
-  warn "Edit .env and set your DATABASE_URL before starting the app."
+  warn "Edit .env and set SESSION_SECRET to a random string."
   echo ""
   echo "  Open it with:  nano .env"
   echo ""
@@ -122,38 +100,9 @@ info "Installing npm dependencies..."
 npm install
 ok "Dependencies installed"
 
-# ---- Push database schema ----
-echo ""
-info "Checking database connection and pushing schema..."
-
-if grep -q "yourpassword" .env 2>/dev/null; then
-  warn "DATABASE_URL still has placeholder values in .env"
-  warn "Skipping database setup — edit .env first, then run:  npm run db:push"
-else
-  set +e
-  eval "$(node -e "
-    const fs = require('fs');
-    const lines = fs.readFileSync('.env', 'utf8').split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eq = trimmed.indexOf('=');
-      if (eq === -1) continue;
-      const key = trimmed.substring(0, eq).trim();
-      const val = trimmed.substring(eq + 1).trim();
-      console.log('export ' + key + '=' + JSON.stringify(val));
-    }
-  ")"
-  npm run db:push 2>&1
-  DB_EXIT=$?
-  set -e
-  if [ $DB_EXIT -eq 0 ]; then
-    ok "Database schema pushed successfully"
-  else
-    warn "Database push failed. Make sure DATABASE_URL in .env is correct."
-    warn "Once fixed, run:  npm run db:push"
-  fi
-fi
+# ---- Create data directory ----
+mkdir -p data
+ok "Data directory ready (SQLite database will be created at ./data/xrpl-monitor.db)"
 
 # ---- Done ----
 echo ""
@@ -162,11 +111,10 @@ echo -e "${GREEN}║   Setup complete!                         ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
 echo ""
 echo "  Next steps:"
-echo "    1. Edit .env and set your DATABASE_URL (if not done)"
-echo "    2. Start the app:"
+echo "    1. Start the app:"
 echo ""
 echo "       ./scripts/start.sh           # Development mode"
 echo "       ./scripts/start.sh --prod    # Production mode"
 echo ""
-echo "    3. Open http://localhost:5000 in your browser"
+echo "    2. Open http://localhost:5000 in your browser"
 echo ""

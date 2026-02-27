@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, boolean, timestamp, serial } from "drizzle-orm/pg-core";
+import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Users table — basic authentication for future multi-user support
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
 });
@@ -21,9 +21,9 @@ export type User = typeof users.$inferSelect;
 // Metrics snapshots — periodic readings of system + XRPL node health,
 // collected every 30s by the background metrics collector in routes.ts.
 // Old entries are pruned after 7 days to prevent unbounded growth.
-export const metricsSnapshots = pgTable("metrics_snapshots", {
-  id: serial("id").primaryKey(),
-  timestamp: timestamp("timestamp").notNull().defaultNow(),
+export const metricsSnapshots = sqliteTable("metrics_snapshots", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  timestamp: integer("timestamp", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
   nodeHost: text("node_host"),                // which node was being monitored
   cpuLoad: real("cpu_load"),                  // host machine CPU percentage
   memoryPercent: real("memory_percent"),       // host machine RAM percentage
@@ -41,13 +41,14 @@ export const metricsSnapshots = pgTable("metrics_snapshots", {
 
 // Webhook configurations — user-defined notification endpoints (Discord, Telegram, generic)
 // that receive alerts when thresholds are breached or connections are lost.
-export const webhookConfigs = pgTable("webhook_configs", {
-  id: serial("id").primaryKey(),
+// events is stored as a JSON-encoded string array (SQLite has no native array type).
+export const webhookConfigs = sqliteTable("webhook_configs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),                // display name for the webhook
   type: text("type").notNull().default("discord"), // "discord" | "telegram" | "generic"
   url: text("url").notNull(),                  // webhook URL (or "botToken|chatId" for Telegram)
-  enabled: boolean("enabled").notNull().default(true),
-  events: text("events").array().notNull().default(sql`ARRAY['alert_critical','alert_warning','connection_lost']`),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  events: text("events").notNull().default('["alert_critical","alert_warning","connection_lost"]'),
 });
 
 export const insertWebhookConfigSchema = createInsertSchema(webhookConfigs).omit({ id: true });
@@ -60,15 +61,15 @@ export type MetricsSnapshot = typeof metricsSnapshots.$inferSelect;
 
 // Alerts — generated when a monitored metric crosses a threshold.
 // Duplicate alerts for the same metric are suppressed within a 5-minute window.
-export const alerts = pgTable("alerts", {
-  id: serial("id").primaryKey(),
-  timestamp: timestamp("timestamp").notNull().defaultNow(),
+export const alerts = sqliteTable("alerts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  timestamp: integer("timestamp", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
   type: text("type").notNull(),               // metric key, e.g. "cpu", "memory", "peers"
   severity: text("severity").notNull(),       // "warning" | "critical"
   message: text("message").notNull(),         // human-readable description
   value: real("value"),                       // the metric value that triggered the alert
   threshold: real("threshold"),               // the threshold that was breached
-  acknowledged: boolean("acknowledged").notNull().default(false),
+  acknowledged: integer("acknowledged", { mode: "boolean" }).notNull().default(false),
 });
 
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true });
@@ -78,12 +79,12 @@ export type Alert = typeof alerts.$inferSelect;
 // Alert thresholds — configurable warning/critical limits per metric.
 // "direction" determines whether alerting triggers when value goes "above" or "below" the threshold
 // (e.g. peers alert when count drops *below*, CPU alerts when load goes *above*).
-export const alertThresholds = pgTable("alert_thresholds", {
-  id: serial("id").primaryKey(),
+export const alertThresholds = sqliteTable("alert_thresholds", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   metric: text("metric").notNull().unique(),       // metric key matching alerts.type
   warningValue: real("warning_value").notNull(),
   criticalValue: real("critical_value").notNull(),
-  enabled: boolean("enabled").notNull().default(true),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   direction: text("direction").notNull().default("above"), // "above" or "below"
 });
 
@@ -93,14 +94,14 @@ export type AlertThreshold = typeof alertThresholds.$inferSelect;
 
 // Saved nodes — user-managed list of XRPL nodes for multi-node monitoring.
 // Only one node can be "active" at a time; it becomes the default target for all queries.
-export const savedNodes = pgTable("saved_nodes", {
-  id: serial("id").primaryKey(),
+export const savedNodes = sqliteTable("saved_nodes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
-  host: text("host").notNull(),
+  host: text("host").notNull().default("localhost"),
   wsPort: integer("ws_port").notNull().default(6006),    // WebSocket port for public commands
   httpPort: integer("http_port").notNull().default(5005), // HTTP JSON-RPC port
   adminPort: integer("admin_port").notNull().default(8080), // Admin port for peers/validators
-  isActive: boolean("is_active").notNull().default(false),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
 });
 
 export const insertSavedNodeSchema = createInsertSchema(savedNodes).omit({ id: true });
@@ -109,9 +110,9 @@ export type SavedNode = typeof savedNodes.$inferSelect;
 
 // AI conversations — chat history for the LM Studio integration.
 // Messages are grouped by sessionId so users can have multiple analysis threads.
-export const aiConversations = pgTable("ai_conversations", {
-  id: serial("id").primaryKey(),
-  timestamp: timestamp("timestamp").notNull().defaultNow(),
+export const aiConversations = sqliteTable("ai_conversations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  timestamp: integer("timestamp", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
   sessionId: text("session_id").notNull(),    // groups messages into conversation threads
   role: text("role").notNull(),               // "user" | "assistant" | "system"
   content: text("content").notNull(),
@@ -124,8 +125,8 @@ export type AiConversation = typeof aiConversations.$inferSelect;
 
 // AI config — LM Studio connection settings (host, port, model).
 // Only one row exists; upserted on save. Can be seeded from LM_STUDIO_URL env var.
-export const aiConfig = pgTable("ai_config", {
-  id: serial("id").primaryKey(),
+export const aiConfig = sqliteTable("ai_config", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   host: text("host").notNull().default("localhost"),
   port: integer("port").notNull().default(1234),
   model: text("model").default(""),

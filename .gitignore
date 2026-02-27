@@ -18,5 +18,8 @@ npm-debug.log*
 # Attached assets (may contain personal screenshots/data)
 attached_assets/
 
+# SQLite database
+data/
+
 # OS files
 Thumbs.db
