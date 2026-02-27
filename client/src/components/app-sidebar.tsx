@@ -26,6 +26,7 @@ import {
   Shield,
   Brain,
   GitCompare,
+  Heart,
 } from "lucide-react";
 import {
   Sidebar,
@@ -276,6 +277,26 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter className="p-4">
         <div className="neon-line mb-3" />
+        <a
+          href="https://rip973.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 mb-3 px-2 py-1.5 rounded-md hover:bg-sidebar-accent transition-colors group"
+          data-testid="link-donate"
+        >
+          <Heart className="w-4 h-4 text-pink-500 group-hover:text-pink-400" />
+          <div className="flex flex-col min-w-0">
+            <span className="text-[10px] tracking-wide uppercase font-mono text-pink-500 group-hover:text-pink-400">
+              Donate
+            </span>
+            <span className="text-[9px] font-mono text-muted-foreground">
+              Validator & RIP973.COM
+            </span>
+            <span className="text-[9px] font-mono text-muted-foreground truncate" title="rNTfyfJaYFbcqSwTKxNwTC322zFziC5LiE">
+              rNTfyfJaYFbc...C5LiE
+            </span>
+          </div>
+        </a>
         <div className="flex items-center gap-2" data-testid="status-system-online">
           <div className="relative flex items-center justify-center">
             <div

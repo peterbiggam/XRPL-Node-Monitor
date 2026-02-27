@@ -334,6 +334,12 @@ Theme variables are defined in `client/src/index.css` using CSS custom propertie
 
 Please follow the existing code style and patterns. The project uses TypeScript throughout — run `npm run check` to verify type correctness before submitting.
 
+## Donate
+
+Donations go towards the development of the XRPL validator and [RIP973.COM](https://rip973.com).
+
+**XRP Wallet:** `rNTfyfJaYFbcqSwTKxNwTC322zFziC5LiE`
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
