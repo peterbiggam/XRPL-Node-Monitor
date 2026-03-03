@@ -1,14 +1,12 @@
 /**
  * Peers Page — Visualises the node's peer connections in three tabs.
  *
- * Tabs:
- * 1. Graph — Force-directed SVG network graph. Inbound peers cluster left,
- *    outbound cluster right. Spring + repulsion physics run for 200 iterations
- *    via requestAnimationFrame.  Hovering a node shows a tooltip with peer details.
- * 2. Table — Sortable data table with IP (partially masked), version, uptime, latency.
- * 3. Map — Geolocation map rendered with a simplified SVG world outline.
- *    Peer dots are plotted via Mercator projection; a "Top Countries" bar chart
- *    is shown alongside.
+ * Tabs (order):
+ * 1. Map — Geolocation world map with detailed continent outlines.
+ *    Peer dots are clickable — opens a detail panel (Sheet) with full peer info.
+ * 2. Graph — Force-directed SVG network graph. Inbound peers cluster left,
+ *    outbound cluster right. Spring + repulsion physics run for 200 iterations.
+ * 3. Table — Sortable data table with IP (partially masked), version, uptime, latency.
  *
  * Also includes a donut chart of peer version distribution.
  */
@@ -25,7 +23,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Users, ArrowDownLeft, ArrowUpRight, Globe, Clock, Network, LayoutList, MapPin } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Users, ArrowDownLeft, ArrowUpRight, Globe, Clock, Network, LayoutList, MapPin, X, Copy, ExternalLink, Activity, Server, Layers } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { PeerInfo } from "@shared/schema";
@@ -753,114 +752,366 @@ function projectLatLon(lat: number, lon: number, width: number, height: number):
   return { x, y };
 }
 
-function SimplifiedWorldMap({ width, height }: { width: number; height: number }) {
+function DetailedWorldMap({ width, height }: { width: number; height: number }) {
   const continentPaths = useMemo(() => {
-    const w = width;
-    const h = height;
-    const p = (lat: number, lon: number) => projectLatLon(lat, lon, w, h);
+    const p = (lat: number, lon: number) => projectLatLon(lat, lon, width, height);
+    const pts2str = (coords: [number, number][]) => {
+      const mapped = coords.map(([lat, lon]) => p(lat, lon));
+      return `M${mapped.map(pt => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(" L")}Z`;
+    };
 
-    const northAmerica = (() => {
-      const pts = [
-        p(72, -168), p(71, -156), p(70, -141), p(69, -130), p(66, -123),
-        p(60, -140), p(58, -137), p(55, -130), p(50, -127), p(48, -124),
-        p(42, -124), p(35, -120), p(30, -117), p(25, -110), p(20, -105),
-        p(15, -92), p(18, -88), p(21, -87), p(25, -80), p(30, -82),
-        p(27, -80), p(25, -78), p(30, -81), p(35, -76), p(40, -74),
-        p(42, -70), p(45, -67), p(47, -60), p(50, -56), p(52, -56),
-        p(55, -60), p(58, -64), p(60, -65), p(63, -68), p(66, -72),
-        p(70, -80), p(72, -95), p(75, -95), p(78, -90), p(80, -85),
-        p(82, -70), p(83, -60), p(80, -65), p(76, -72), p(73, -80),
-        p(72, -100), p(72, -130), p(72, -150),
-      ];
-      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
-    })();
+    const northAmerica = pts2str([
+      [83,-70],[82,-80],[80,-95],[78,-105],[75,-120],[72,-128],[70,-141],[69,-139],
+      [67,-140],[65,-141],[63,-145],[61,-147],[60,-149],[59,-152],[58,-153],[57,-157],
+      [56,-160],[55,-163],[54,-165],[53,-167],[55,-170],[58,-170],[60,-167],[62,-163],
+      [64,-162],[66,-164],[68,-163],[70,-162],[71,-157],[72,-155],[71,-151],[70,-146],
+      [69,-141],[68,-138],[66,-136],[64,-133],[63,-131],[62,-129],[61,-130],[60,-132],
+      [60,-137],[59,-138],[58,-136],[57,-133],[56,-131],[55,-130],[54,-129],[53,-128],
+      [52,-128],[51,-128],[50,-127],[49,-126],[48,-125],[47,-124],[46,-124],[44,-124],
+      [42,-124],[40,-124],[38,-123],[37,-122],[35,-121],[34,-120],[33,-118],[32,-117],
+      [31,-116],[30,-115],[29,-114],[28,-112],[27,-110],[26,-109],[25,-108],[24,-107],
+      [23,-106],[22,-105],[21,-105],[20,-105],[19,-104],[18,-103],[17,-101],[16,-97],
+      [16,-93],[15,-92],[16,-90],[17,-89],[18,-88],[19,-87],[20,-87],[21,-87],
+      [22,-86],[21,-88],[20,-90],[19,-91],[18,-91],[17,-92],[18,-89],[19,-88],
+      [20,-87],[21,-86],[22,-85],[23,-83],[24,-82],[25,-81],[26,-80],[27,-80],
+      [28,-80],[29,-81],[30,-81],[31,-82],[32,-81],[33,-80],[34,-78],[35,-76],
+      [36,-76],[37,-76],[38,-75],[39,-75],[40,-74],[41,-73],[42,-71],[43,-70],
+      [44,-69],[45,-67],[46,-64],[47,-62],[48,-60],[49,-59],[50,-57],[51,-56],
+      [52,-56],[53,-56],[54,-58],[55,-60],[56,-62],[57,-63],[58,-64],[59,-64],
+      [60,-65],[61,-65],[62,-66],[63,-68],[64,-67],[65,-64],[66,-62],[67,-60],
+      [68,-58],[69,-55],[70,-55],[71,-56],[72,-58],[73,-60],[74,-62],[75,-65],
+      [76,-70],[77,-73],[78,-75],[79,-76],[80,-78],[81,-75],[82,-72],[83,-70]
+    ]);
 
-    const southAmerica = (() => {
-      const pts = [
-        p(12, -72), p(10, -67), p(8, -60), p(5, -52), p(2, -50),
-        p(-2, -44), p(-5, -35), p(-10, -37), p(-15, -39), p(-18, -40),
-        p(-22, -41), p(-25, -48), p(-30, -51), p(-35, -57), p(-40, -62),
-        p(-45, -66), p(-50, -70), p(-53, -72), p(-55, -68), p(-52, -65),
-        p(-48, -65), p(-45, -72), p(-40, -72), p(-35, -72), p(-30, -72),
-        p(-25, -70), p(-20, -70), p(-15, -76), p(-10, -78), p(-5, -80),
-        p(0, -80), p(5, -77), p(10, -75),
-      ];
-      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
-    })();
+    const centralAmerica = pts2str([
+      [18,-88],[17,-89],[16,-90],[15,-89],[14,-88],[13,-88],[12,-86],[11,-85],
+      [10,-84],[9,-83],[9,-82],[9,-80],[8,-79],[8,-78],[8,-77],[9,-76],
+      [10,-76],[11,-75],[12,-72],[11,-74],[10,-76],[9,-78],[9,-79],[10,-81],
+      [11,-83],[12,-84],[13,-86],[14,-87],[15,-88],[16,-89],[17,-89],[18,-88]
+    ]);
 
-    const europe = (() => {
-      const pts = [
-        p(71, -25), p(70, -10), p(65, 0), p(60, 5), p(55, 8),
-        p(52, 5), p(50, 2), p(48, -5), p(44, -9), p(36, -6),
-        p(36, -5), p(38, 0), p(40, 3), p(42, 10), p(44, 12),
-        p(45, 14), p(42, 16), p(40, 18), p(38, 22), p(36, 24),
-        p(35, 26), p(38, 28), p(40, 26), p(42, 28), p(44, 28),
-        p(46, 30), p(48, 24), p(50, 20), p(52, 18), p(55, 20),
-        p(58, 18), p(60, 20), p(62, 22), p(65, 25), p(68, 28),
-        p(70, 30), p(72, 28), p(73, 20), p(72, 10), p(71, 0),
-      ];
-      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
-    })();
+    const southAmerica = pts2str([
+      [12,-72],[11,-73],[10,-72],[9,-71],[8,-70],[7,-68],[6,-66],[5,-62],
+      [4,-60],[3,-58],[2,-55],[1,-52],[0,-50],[-1,-48],[-2,-44],[-3,-42],
+      [-4,-39],[-5,-36],[-6,-35],[-7,-35],[-8,-35],[-9,-35],[-10,-36],
+      [-11,-37],[-12,-38],[-13,-39],[-14,-39],[-15,-39],[-16,-40],[-17,-40],
+      [-18,-40],[-19,-40],[-20,-41],[-21,-41],[-22,-41],[-23,-42],[-24,-44],
+      [-25,-46],[-26,-48],[-27,-49],[-28,-49],[-29,-50],[-30,-51],[-31,-52],
+      [-32,-53],[-33,-54],[-34,-55],[-35,-57],[-36,-57],[-37,-58],[-38,-58],
+      [-39,-62],[-40,-62],[-41,-63],[-42,-64],[-43,-65],[-44,-66],[-45,-66],
+      [-46,-66],[-47,-66],[-48,-66],[-49,-68],[-50,-69],[-51,-70],[-52,-71],
+      [-53,-72],[-54,-72],[-55,-69],[-54,-67],[-53,-68],[-52,-70],[-51,-69],
+      [-50,-68],[-49,-66],[-48,-65],[-47,-66],[-46,-68],[-45,-72],[-44,-72],
+      [-43,-73],[-42,-73],[-41,-73],[-40,-73],[-39,-72],[-38,-72],[-37,-72],
+      [-36,-72],[-35,-72],[-34,-72],[-33,-72],[-32,-71],[-31,-72],[-30,-72],
+      [-29,-71],[-28,-71],[-27,-71],[-26,-70],[-25,-70],[-24,-70],[-23,-70],
+      [-22,-70],[-21,-70],[-20,-70],[-19,-70],[-18,-70],[-17,-72],[-16,-75],
+      [-15,-76],[-14,-76],[-13,-77],[-12,-77],[-11,-78],[-10,-78],[-9,-79],
+      [-8,-80],[-7,-80],[-6,-80],[-5,-80],[-4,-80],[-3,-80],[-2,-80],[-1,-80],
+      [0,-80],[1,-79],[2,-78],[3,-78],[4,-77],[5,-77],[6,-76],[7,-76],
+      [8,-74],[9,-73],[10,-73],[11,-73],[12,-72]
+    ]);
 
-    const africa = (() => {
-      const pts = [
-        p(37, -10), p(35, -5), p(32, 0), p(30, 10), p(32, 32),
-        p(30, 33), p(28, 34), p(22, 37), p(15, 42), p(12, 44),
-        p(10, 50), p(5, 42), p(0, 42), p(-5, 40), p(-10, 40),
-        p(-15, 38), p(-20, 35), p(-25, 33), p(-28, 28), p(-30, 30),
-        p(-34, 26), p(-34, 18), p(-30, 17), p(-25, 15), p(-20, 12),
-        p(-15, 12), p(-10, 14), p(-5, 10), p(0, 10), p(5, 5),
-        p(5, 0), p(8, -5), p(10, -10), p(15, -17), p(20, -17),
-        p(25, -15), p(30, -10), p(35, -8),
-      ];
-      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
-    })();
+    const europe = pts2str([
+      [71,-25],[70,-22],[69,-18],[68,-15],[67,-14],[66,-13],[65,-12],
+      [64,-14],[63,-16],[62,-18],[61,-20],[60,-20],[59,-18],[58,-16],
+      [57,-13],[56,-10],[55,-8],[54,-8],[53,-6],[52,-5],[51,-5],[50,-5],
+      [49,-4],[48,-5],[47,-3],[46,-2],[44,-1],[43,-2],[42,-3],[41,-5],
+      [40,-5],[39,-6],[38,-5],[37,-6],[36,-6],[36,-5],[37,-2],[38,0],
+      [39,0],[40,0],[41,1],[42,3],[43,5],[44,8],[44,10],[45,12],
+      [44,12],[43,13],[42,15],[41,15],[40,16],[39,18],[38,20],[37,22],
+      [36,23],[35,24],[35,26],[36,27],[37,28],[38,28],[39,27],[40,26],
+      [41,27],[42,28],[42,29],[43,28],[44,28],[45,29],[46,30],[47,30],
+      [48,28],[49,26],[50,24],[51,22],[52,21],[53,18],[54,18],[55,20],
+      [56,18],[57,16],[58,15],[59,16],[60,18],[61,20],[62,20],[63,22],
+      [64,24],[65,25],[66,25],[67,26],[68,27],[69,28],[70,30],
+      [71,29],[72,28],[73,26],[73,22],[72,18],[72,14],[71,10],
+      [71,5],[71,0],[71,-5],[71,-10],[71,-15],[71,-20],[71,-25]
+    ]);
 
-    const asia = (() => {
-      const pts = [
-        p(72, 30), p(70, 50), p(68, 70), p(65, 90), p(62, 100),
-        p(60, 110), p(55, 120), p(50, 130), p(45, 135), p(40, 140),
-        p(35, 140), p(30, 122), p(25, 120), p(22, 115), p(20, 110),
-        p(15, 100), p(10, 100), p(8, 98), p(5, 95), p(0, 95),
-        p(-5, 105), p(-8, 115), p(-5, 120), p(0, 110), p(5, 105),
-        p(8, 100), p(10, 105), p(15, 108), p(20, 107), p(22, 105),
-        p(25, 100), p(28, 95), p(25, 90), p(22, 85), p(18, 80),
-        p(15, 75), p(20, 72), p(25, 68), p(28, 62), p(25, 57),
-        p(22, 55), p(25, 50), p(28, 48), p(30, 45), p(35, 40),
-        p(38, 35), p(40, 32), p(42, 30), p(45, 32), p(48, 35),
-        p(50, 40), p(52, 45), p(55, 50), p(58, 55), p(60, 60),
-        p(62, 65), p(65, 70), p(68, 60), p(70, 45), p(72, 35),
-      ];
-      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
-    })();
+    const uk = pts2str([
+      [58,-5],[57,-6],[56,-6],[55,-5],[54,-4],[53,-4],[52,-4],[51,-3],
+      [50,-5],[50,-4],[51,-1],[52,0],[53,1],[53,0],[54,-1],[55,-2],
+      [56,-3],[57,-5],[58,-5]
+    ]);
 
-    const australia = (() => {
-      const pts = [
-        p(-12, 130), p(-15, 125), p(-20, 118), p(-25, 115),
-        p(-30, 115), p(-32, 117), p(-35, 118), p(-38, 145),
-        p(-37, 150), p(-35, 152), p(-30, 153), p(-25, 152),
-        p(-20, 148), p(-15, 145), p(-12, 140), p(-10, 135),
-      ];
-      return `M${pts.map(pt => `${pt.x},${pt.y}`).join(" L")}Z`;
-    })();
+    const iceland = pts2str([
+      [66,-18],[65,-20],[64,-22],[63,-22],[63,-20],[64,-18],[65,-16],
+      [65,-14],[66,-14],[66,-16],[66,-18]
+    ]);
 
-    return [northAmerica, southAmerica, europe, africa, asia, australia];
+    const africa = pts2str([
+      [37,-10],[36,-8],[35,-5],[34,-2],[33,0],[32,0],[31,2],[30,5],
+      [29,8],[28,10],[30,10],[31,12],[32,15],[33,12],[34,10],[35,10],
+      [35,12],[34,15],[33,18],[32,20],[31,22],[30,25],[31,28],[32,32],
+      [31,33],[30,33],[29,33],[28,34],[27,34],[26,35],[24,36],[22,37],
+      [20,38],[18,40],[16,42],[14,44],[12,45],[11,47],[10,50],[8,48],
+      [6,44],[5,42],[4,42],[3,41],[2,42],[1,41],[0,42],[-1,42],
+      [-2,41],[-3,40],[-4,40],[-5,40],[-6,39],[-8,39],[-10,40],
+      [-12,40],[-14,38],[-16,37],[-18,36],[-20,35],[-22,35],[-24,35],
+      [-26,33],[-28,30],[-30,31],[-32,29],[-34,27],[-34,25],[-34,22],
+      [-34,20],[-33,18],[-32,18],[-30,17],[-28,16],[-26,15],[-24,14],
+      [-22,14],[-20,13],[-18,12],[-16,12],[-14,12],[-12,13],[-10,14],
+      [-8,14],[-6,12],[-5,10],[-4,10],[-3,10],[-2,10],[-1,10],
+      [0,10],[1,8],[2,5],[3,3],[4,2],[5,1],[6,1],[7,1],[8,-1],
+      [9,-3],[10,-5],[11,-8],[12,-10],[13,-12],[14,-14],[15,-16],
+      [17,-16],[18,-16],[20,-17],[22,-17],[24,-16],[26,-15],[28,-14],
+      [30,-12],[32,-10],[34,-8],[36,-6],[37,-10]
+    ]);
+
+    const madagascar = pts2str([
+      [-12,49],[-14,48],[-16,47],[-18,45],[-20,44],[-22,44],[-24,44],
+      [-25,47],[-24,48],[-22,48],[-20,49],[-18,50],[-16,50],[-14,50],[-12,49]
+    ]);
+
+    const middleEast = pts2str([
+      [37,36],[36,36],[35,36],[34,36],[33,36],[32,35],[31,35],[30,34],
+      [29,34],[28,34],[27,35],[26,36],[25,37],[24,38],[23,38],[22,39],
+      [21,40],[20,41],[18,42],[16,43],[14,44],[13,45],[12,44],[13,48],
+      [14,49],[15,50],[16,52],[18,55],[20,57],[22,58],[24,58],[25,56],
+      [26,56],[27,56],[28,55],[29,52],[30,50],[30,48],[31,47],[32,48],
+      [33,49],[34,48],[35,46],[36,44],[36,42],[37,40],[37,38],[37,36]
+    ]);
+
+    const asia = pts2str([
+      [72,30],[72,35],[72,40],[72,50],[72,60],[72,70],[72,80],[72,90],
+      [72,100],[72,110],[72,120],[72,130],[72,140],[72,150],[72,160],
+      [72,170],[72,178],[70,178],[68,175],[66,170],[65,168],[64,165],
+      [63,162],[62,163],[61,161],[60,160],[59,158],[58,155],[57,153],
+      [56,156],[55,158],[54,156],[53,153],[52,150],[51,148],[50,143],
+      [48,144],[46,143],[45,142],[44,143],[43,145],[42,140],[41,135],
+      [40,132],[39,128],[38,126],[37,127],[36,126],[35,128],[34,130],
+      [33,131],[32,132],[31,131],[30,122],[29,120],[28,117],[27,115],
+      [26,112],[25,110],[24,108],[23,107],[22,106],[21,106],[20,106],
+      [19,106],[18,106],[17,105],[16,104],[15,103],[14,102],[13,101],
+      [12,100],[11,99],[10,99],[9,100],[8,99],[7,98],[6,96],[5,95],
+      [4,95],[3,96],[2,96],[1,96],[0,96],[-1,97],[-2,98],[-3,99],
+      [-4,100],[-5,101],[-6,102],[-7,103],[-8,106],[-7,108],[-6,110],
+      [-5,112],[-6,114],[-7,115],[-8,116],[-8,114],[-7,112],[-7,110],
+      [-6,108],[-8,110],[-8,112],[-7,114],[-6,116],[-4,118],
+      [-2,116],[0,114],[1,112],[2,110],[3,108],[4,107],
+      [5,105],[6,103],[7,101],[8,100],[9,100],[10,101],[11,103],
+      [12,103],[13,105],[14,108],[15,108],[16,108],[18,107],
+      [19,106],[20,106],[21,107],[22,108],[23,110],[24,112],
+      [25,115],[26,117],[27,119],[28,121],[29,122],[30,121],
+      [30,118],[29,116],[28,114],[27,110],[26,107],[25,105],
+      [24,103],[23,100],[22,98],[21,96],[20,94],[19,92],[18,88],
+      [17,85],[16,82],[15,80],[14,78],[13,77],[12,75],[11,74],
+      [10,76],[9,77],[8,77],[7,78],[6,80],[5,80],[6,78],[7,76],
+      [8,75],[9,74],[10,73],[11,72],[12,70],[13,68],[14,66],
+      [15,68],[16,72],[17,74],[18,76],[19,78],[20,73],[21,72],
+      [22,70],[23,68],[24,67],[25,65],[26,63],[27,62],[28,60],
+      [29,58],[30,53],[31,50],[32,48],[33,49],[34,48],[35,46],
+      [36,44],[37,40],[38,38],[39,36],[40,35],[41,33],[42,32],
+      [43,31],[44,30],[45,31],[46,32],[48,34],[50,36],[52,38],
+      [54,40],[55,44],[56,48],[57,50],[58,52],[59,54],[60,56],
+      [61,58],[62,60],[63,62],[64,64],[65,66],[66,68],[67,70],
+      [68,68],[69,65],[70,60],[70,55],[70,50],[70,45],[70,40],
+      [71,35],[72,30]
+    ]);
+
+    const japan = pts2str([
+      [45,142],[44,144],[43,145],[42,143],[41,141],[40,140],[39,140],
+      [38,139],[37,137],[36,136],[35,135],[34,133],[33,132],[32,131],
+      [31,131],[32,132],[33,134],[34,135],[35,136],[36,138],[37,140],
+      [38,140],[39,141],[40,141],[41,142],[42,143],[43,145],[44,145],[45,142]
+    ]);
+
+    const australia = pts2str([
+      [-11,132],[-12,131],[-13,130],[-14,128],[-15,127],[-16,126],
+      [-18,123],[-20,119],[-22,117],[-24,114],[-26,114],[-28,114],
+      [-30,115],[-32,116],[-34,116],[-35,117],[-36,118],[-37,120],
+      [-38,123],[-38,126],[-38,130],[-38,135],[-38,140],[-38,144],
+      [-38,147],[-37,149],[-36,150],[-35,151],[-34,151],[-33,152],
+      [-32,152],[-30,153],[-28,153],[-26,153],[-24,152],[-22,150],
+      [-20,149],[-18,147],[-16,146],[-15,145],[-14,144],[-13,142],
+      [-12,141],[-12,137],[-12,136],[-12,135],[-11,134],[-11,132]
+    ]);
+
+    const newZealand = pts2str([
+      [-35,174],[-36,175],[-37,176],[-38,177],[-39,177],[-40,176],
+      [-41,175],[-42,173],[-43,172],[-44,170],[-45,168],[-46,167],
+      [-46,168],[-45,170],[-44,171],[-43,173],[-42,174],[-41,175],
+      [-40,176],[-39,177],[-38,178],[-37,177],[-36,176],[-35,174]
+    ]);
+
+    const indonesia = pts2str([
+      [-2,106],[-3,107],[-4,108],[-5,109],[-6,110],[-7,111],[-8,112],
+      [-8,114],[-8,116],[-7,117],[-6,116],[-5,115],[-4,114],[-3,112],
+      [-2,110],[-1,108],[-2,106]
+    ]);
+
+    const borneo = pts2str([
+      [7,117],[6,116],[5,115],[4,115],[3,114],[2,112],[1,110],
+      [0,109],[-1,109],[-2,110],[-3,112],[-2,114],[-1,115],[0,116],
+      [1,117],[2,118],[3,118],[4,118],[5,118],[6,118],[7,117]
+    ]);
+
+    const greenland = pts2str([
+      [84,-30],[83,-28],[82,-25],[81,-22],[80,-20],[79,-19],[78,-18],
+      [77,-18],[76,-20],[75,-21],[74,-22],[73,-23],[72,-24],[71,-25],
+      [70,-26],[69,-28],[68,-30],[67,-32],[66,-35],[65,-38],[64,-42],
+      [63,-45],[62,-48],[61,-50],[60,-50],[61,-48],[62,-45],[63,-42],
+      [64,-40],[65,-38],[66,-38],[67,-38],[68,-36],[69,-34],[70,-32],
+      [71,-30],[72,-28],[73,-26],[74,-24],[75,-22],[76,-22],[77,-21],
+      [78,-22],[79,-24],[80,-26],[81,-28],[82,-30],[83,-35],[84,-38],
+      [84,-42],[84,-46],[83,-48],[82,-50],[81,-52],[80,-54],[79,-58],
+      [78,-60],[77,-62],[76,-64],[75,-62],[76,-58],[77,-55],[78,-52],
+      [79,-50],[80,-48],[81,-46],[82,-44],[83,-40],[84,-36],[84,-30]
+    ]);
+
+    const svalbard = pts2str([
+      [80,15],[79,12],[78,11],[77,14],[77,16],[78,18],[79,20],[80,20],
+      [80,18],[80,15]
+    ]);
+
+    const philippines = pts2str([
+      [19,121],[18,120],[16,120],[14,121],[13,122],[12,123],[11,124],
+      [10,124],[11,125],[12,125],[13,124],[14,123],[16,122],[18,122],[19,121]
+    ]);
+
+    const sriLanka = pts2str([
+      [10,80],[9,80],[8,80],[7,80],[6,81],[7,82],[8,82],[9,81],[10,80]
+    ]);
+
+    const taiwan = pts2str([
+      [25,121],[24,120],[23,120],[22,121],[23,122],[24,122],[25,121]
+    ]);
+
+    return [
+      { d: northAmerica, fill: "hsl(185, 25%, 13%)" },
+      { d: centralAmerica, fill: "hsl(185, 25%, 13%)" },
+      { d: southAmerica, fill: "hsl(185, 25%, 12%)" },
+      { d: europe, fill: "hsl(185, 25%, 14%)" },
+      { d: uk, fill: "hsl(185, 25%, 14%)" },
+      { d: iceland, fill: "hsl(185, 25%, 14%)" },
+      { d: africa, fill: "hsl(185, 25%, 11%)" },
+      { d: madagascar, fill: "hsl(185, 25%, 11%)" },
+      { d: middleEast, fill: "hsl(185, 25%, 12%)" },
+      { d: asia, fill: "hsl(185, 25%, 13%)" },
+      { d: japan, fill: "hsl(185, 25%, 14%)" },
+      { d: australia, fill: "hsl(185, 25%, 12%)" },
+      { d: newZealand, fill: "hsl(185, 25%, 12%)" },
+      { d: indonesia, fill: "hsl(185, 25%, 12%)" },
+      { d: borneo, fill: "hsl(185, 25%, 12%)" },
+      { d: greenland, fill: "hsl(185, 25%, 15%)" },
+      { d: svalbard, fill: "hsl(185, 25%, 14%)" },
+      { d: philippines, fill: "hsl(185, 25%, 13%)" },
+      { d: sriLanka, fill: "hsl(185, 25%, 13%)" },
+      { d: taiwan, fill: "hsl(185, 25%, 13%)" },
+    ];
   }, [width, height]);
 
   return (
     <g>
-      {continentPaths.map((d, i) => (
+      {continentPaths.map((item, i) => (
         <path
           key={i}
-          d={d}
-          fill="hsl(185, 30%, 12%)"
+          d={item.d}
+          fill={item.fill}
           stroke="hsl(185, 100%, 50%)"
-          strokeWidth="0.5"
-          strokeOpacity="0.3"
-          fillOpacity="0.6"
+          strokeWidth="0.7"
+          strokeOpacity="0.35"
+          fillOpacity="0.7"
         />
       ))}
     </g>
+  );
+}
+
+function PeerDetailPanel({ peer, onClose }: { peer: PeerLocation | null; onClose: () => void }) {
+  if (!peer) return null;
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  return (
+    <Sheet open={!!peer} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <SheetContent className="cyber-border border-l-primary/30 bg-background/95 backdrop-blur-md overflow-auto" data-testid="panel-peer-detail">
+        <SheetHeader className="pb-4 border-b border-primary/10">
+          <SheetTitle className="flex items-center gap-2 text-primary text-glow font-mono">
+            <MapPin className="w-5 h-5" />
+            Peer Details
+          </SheetTitle>
+        </SheetHeader>
+        <div className="space-y-5 pt-5">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-md bg-primary/10 cyber-border">
+              <Globe className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <p className="text-lg font-semibold font-mono text-primary text-glow" data-testid="text-peer-location">
+                {peer.city}, {peer.country}
+              </p>
+              <p className="text-xs text-muted-foreground font-mono">
+                {peer.count} peer{peer.count !== 1 ? "s" : ""} at this location
+              </p>
+            </div>
+          </div>
+
+          <Card className="cyber-border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <Server className="w-3.5 h-3.5" />
+                Network Info
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">IP Address</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-mono text-primary" data-testid="text-peer-ip">{peer.ip}</span>
+                  <button
+                    onClick={() => copyToClipboard(peer.ip)}
+                    className="p-1 rounded hover:bg-primary/10 transition-colors"
+                    data-testid="button-copy-ip"
+                  >
+                    <Copy className="w-3 h-3 text-muted-foreground" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Peer Count</span>
+                <Badge variant="secondary" className="font-mono" data-testid="text-peer-count">{peer.count}</Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="cyber-border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <MapPin className="w-3.5 h-3.5" />
+                Coordinates
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Latitude</span>
+                <span className="text-sm font-mono" data-testid="text-peer-lat">{peer.lat.toFixed(4)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Longitude</span>
+                <span className="text-sm font-mono" data-testid="text-peer-lon">{peer.lon.toFixed(4)}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="pt-2">
+            <a
+              href={`https://www.google.com/maps/@${peer.lat},${peer.lon},8z`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-xs text-primary/70 hover:text-primary transition-colors font-mono"
+              data-testid="link-google-maps"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              View on Google Maps
+            </a>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -871,11 +1122,12 @@ function PeerGeoMap() {
   });
 
   const [hoveredPeer, setHoveredPeer] = useState<PeerLocation | null>(null);
+  const [selectedPeer, setSelectedPeer] = useState<PeerLocation | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const mapWidth = 800;
-  const mapHeight = 450;
+  const mapWidth = 900;
+  const mapHeight = 500;
 
   const topCountries = useMemo(() => {
     if (!data?.locations) return [];
@@ -885,7 +1137,7 @@ function PeerGeoMap() {
     });
     return Object.entries(countryMap)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 6);
+      .slice(0, 8);
   }, [data]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -903,7 +1155,7 @@ function PeerGeoMap() {
         const { x, y } = projectLatLon(loc.lat, loc.lon, mapWidth, mapHeight);
         const dx = mx - x;
         const dy = my - y;
-        if (Math.sqrt(dx * dx + dy * dy) < 12) {
+        if (Math.sqrt(dx * dx + dy * dy) < 14) {
           found = loc;
           setTooltipPos({ x: e.clientX - (svg.getBoundingClientRect().left), y: e.clientY - (svg.getBoundingClientRect().top) });
           break;
@@ -911,6 +1163,28 @@ function PeerGeoMap() {
       }
     }
     setHoveredPeer(found);
+  }, [data]);
+
+  const handleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const scaleX = mapWidth / rect.width;
+    const scaleY = mapHeight / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
+
+    if (data?.locations) {
+      for (const loc of data.locations) {
+        const { x, y } = projectLatLon(loc.lat, loc.lon, mapWidth, mapHeight);
+        const dx = mx - x;
+        const dy = my - y;
+        if (Math.sqrt(dx * dx + dy * dy) < 14) {
+          setSelectedPeer(loc);
+          return;
+        }
+      }
+    }
   }, [data]);
 
   if (isLoading) {
@@ -986,12 +1260,13 @@ function PeerGeoMap() {
             ref={svgRef}
             width={mapWidth}
             height={mapHeight}
-            className="w-full"
+            className="w-full rounded-lg"
             viewBox={`0 0 ${mapWidth} ${mapHeight}`}
             onMouseMove={handleMouseMove}
             onMouseLeave={() => setHoveredPeer(null)}
+            onClick={handleClick}
             data-testid="svg-peer-map"
-            style={{ background: "hsl(225, 30%, 3%)" }}
+            style={{ background: "linear-gradient(180deg, hsl(225, 30%, 4%) 0%, hsl(225, 30%, 2%) 100%)" }}
           >
             <defs>
               <filter id="peer-glow" x="-100%" y="-100%" width="300%" height="300%">
@@ -1001,8 +1276,16 @@ function PeerGeoMap() {
                   <feMergeNode in="SourceGraphic" />
                 </feMerge>
               </filter>
+              <filter id="peer-pulse" x="-200%" y="-200%" width="500%" height="500%">
+                <feGaussianBlur stdDeviation="8" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
               <radialGradient id="peer-dot-gradient" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="hsl(185, 100%, 60%)" stopOpacity="1" />
+                <stop offset="0%" stopColor="hsl(185, 100%, 70%)" stopOpacity="1" />
+                <stop offset="70%" stopColor="hsl(185, 100%, 55%)" stopOpacity="0.8" />
                 <stop offset="100%" stopColor="hsl(185, 100%, 50%)" stopOpacity="0.3" />
               </radialGradient>
             </defs>
@@ -1015,8 +1298,8 @@ function PeerGeoMap() {
                 x2={mapWidth}
                 y2={(i * mapHeight) / 6}
                 stroke="hsl(185, 100%, 50%)"
-                strokeOpacity="0.04"
-                strokeDasharray="2 4"
+                strokeOpacity="0.03"
+                strokeDasharray="2 6"
               />
             ))}
             {Array.from({ length: 13 }).map((_, i) => (
@@ -1027,46 +1310,65 @@ function PeerGeoMap() {
                 x2={(i * mapWidth) / 12}
                 y2={mapHeight}
                 stroke="hsl(185, 100%, 50%)"
-                strokeOpacity="0.04"
-                strokeDasharray="2 4"
+                strokeOpacity="0.03"
+                strokeDasharray="2 6"
               />
             ))}
 
-            <SimplifiedWorldMap width={mapWidth} height={mapHeight} />
+            <DetailedWorldMap width={mapWidth} height={mapHeight} />
 
             {locations.map((loc, i) => {
               const { x, y } = projectLatLon(loc.lat, loc.lon, mapWidth, mapHeight);
               const isHovered = hoveredPeer?.ip === loc.ip;
-              const dotRadius = Math.max(3, Math.min(8, 2 + loc.count * 1.5));
+              const isSelected = selectedPeer?.ip === loc.ip;
+              const dotRadius = Math.max(3.5, Math.min(9, 2.5 + loc.count * 1.5));
+              const active = isHovered || isSelected;
               return (
-                <g key={`peer-${i}`} filter="url(#peer-glow)">
+                <g key={`peer-${i}`} style={{ cursor: "pointer" }}>
                   <circle
                     cx={x}
                     cy={y}
-                    r={isHovered ? dotRadius + 4 : dotRadius + 2}
+                    r={active ? dotRadius + 10 : dotRadius + 4}
                     fill="hsl(185, 100%, 50%)"
-                    fillOpacity={isHovered ? 0.15 : 0.08}
+                    fillOpacity={active ? 0.12 : 0.05}
+                    filter="url(#peer-pulse)"
                   />
                   <circle
                     cx={x}
                     cy={y}
-                    r={isHovered ? dotRadius + 1 : dotRadius}
+                    r={active ? dotRadius + 2 : dotRadius}
                     fill="url(#peer-dot-gradient)"
-                    stroke="hsl(185, 100%, 60%)"
-                    strokeWidth={isHovered ? 1.5 : 0.5}
-                    style={{ cursor: "pointer" }}
+                    stroke="hsl(185, 100%, 65%)"
+                    strokeWidth={active ? 2 : 0.8}
                     data-testid={`dot-peer-${i}`}
                   />
+                  {active && (
+                    <text
+                      x={x}
+                      y={y - dotRadius - 8}
+                      textAnchor="middle"
+                      fill="hsl(185, 100%, 70%)"
+                      fontSize="9"
+                      fontFamily="monospace"
+                      fontWeight="bold"
+                    >
+                      {loc.city}
+                    </text>
+                  )}
                 </g>
               );
             })}
           </svg>
 
+          <p className="text-[10px] text-muted-foreground/50 text-center font-mono mt-1">
+            Click on a peer dot to view details
+          </p>
+
           {hoveredPeer && (
             <div
               className="absolute pointer-events-none z-50"
               style={{
-                left: tooltipPos.x + 16,
+                left: Math.min(tooltipPos.x + 16, mapWidth * 0.7),
                 top: tooltipPos.y - 10,
                 maxWidth: 280,
               }}
@@ -1075,23 +1377,24 @@ function PeerGeoMap() {
               <Card className="cyber-border cyber-glow p-3 space-y-1.5">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-3 h-3 text-primary" />
-                  <span className="text-xs font-mono text-primary">
+                  <span className="text-xs font-mono text-primary font-semibold">
                     {hoveredPeer.city}, {hoveredPeer.country}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                   <span className="text-muted-foreground">IP</span>
                   <span className="font-mono">{hoveredPeer.ip}</span>
-                  <span className="text-muted-foreground">Latitude</span>
-                  <span className="font-mono">{hoveredPeer.lat.toFixed(2)}</span>
-                  <span className="text-muted-foreground">Longitude</span>
-                  <span className="font-mono">{hoveredPeer.lon.toFixed(2)}</span>
+                  <span className="text-muted-foreground">Coords</span>
+                  <span className="font-mono">{hoveredPeer.lat.toFixed(2)}, {hoveredPeer.lon.toFixed(2)}</span>
                   <span className="text-muted-foreground">Peers</span>
                   <span className="font-mono text-primary">{hoveredPeer.count}</span>
                 </div>
+                <p className="text-[10px] text-muted-foreground/60 pt-1">Click to view full details</p>
               </Card>
             </div>
           )}
+
+          <PeerDetailPanel peer={selectedPeer} onClose={() => setSelectedPeer(null)} />
         </CardContent>
       </Card>
 
@@ -1196,8 +1499,12 @@ export default function PeersPage() {
       <PeerSummary peers={peers} />
 
       <motion.div variants={itemVariants}>
-        <Tabs defaultValue="graph" data-testid="tabs-peer-view">
+        <Tabs defaultValue="map" data-testid="tabs-peer-view">
           <TabsList data-testid="tabslist-peer-view">
+            <TabsTrigger value="map" data-testid="tab-map">
+              <MapPin className="w-4 h-4 mr-1.5" />
+              Map
+            </TabsTrigger>
             <TabsTrigger value="graph" data-testid="tab-graph">
               <Network className="w-4 h-4 mr-1.5" />
               Graph
@@ -1206,11 +1513,11 @@ export default function PeersPage() {
               <LayoutList className="w-4 h-4 mr-1.5" />
               Table
             </TabsTrigger>
-            <TabsTrigger value="map" data-testid="tab-map">
-              <MapPin className="w-4 h-4 mr-1.5" />
-              Map
-            </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="map" className="space-y-4">
+            <PeerGeoMap />
+          </TabsContent>
 
           <TabsContent value="graph" className="space-y-4">
             <PeerNetworkGraph peers={peers} />
@@ -1219,10 +1526,6 @@ export default function PeersPage() {
 
           <TabsContent value="table">
             <PeerTable peers={peers} />
-          </TabsContent>
-
-          <TabsContent value="map" className="space-y-4">
-            <PeerGeoMap />
           </TabsContent>
         </Tabs>
       </motion.div>
