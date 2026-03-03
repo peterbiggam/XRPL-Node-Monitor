@@ -65,6 +65,7 @@ shared/
 - `GET /api/node/health-score` — Composite health score (0-100) with component breakdown
 - `GET /api/node/ledger-lag` — Ledger lag vs s2.ripple.com public node
 - `GET /api/node/tps` — Current/avg/peak transactions per second
+- `GET /api/node/packets?since=N` — Live WebSocket fetch packet log (in-memory ring buffer)
 - `GET /api/node/unl-comparison` — UNL overlap comparison with vl.ripple.com
 - `GET /api/node/peer-locations` — Peer IP geolocation via ip-api.com
 - `GET /api/nodes/compare` — Multi-node side-by-side comparison
