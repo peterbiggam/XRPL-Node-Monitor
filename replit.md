@@ -14,7 +14,7 @@ A cross-platform XRPL (XRP Ledger) node monitoring dashboard with a cyberpunk/sc
 - **Metrics History**: Time-series charts (1h/6h/24h/7d) for CPU, memory, peers, ledger close times, load factor, **node latency**, **TPS over time**, **base fee trend**, **latency heatmap** with CSV/JSON export
 - **Alert Center**: Threshold-based alerting with configurable warning/critical levels, cooldown logic, acknowledge functionality, pulsing sidebar badge, **webhook dispatch on alerts**
 - **Network Explorer**: Transaction hash lookup, account info/balance, fee estimator
-- **Ledger Explorer**: Detailed ledger information, recent ledger list, close time chart
+- **Ledger Explorer**: Detailed ledger information, recent ledger list, close time chart, **clickable transaction table with detail dialog** (hash, type, accounts, amount, fee, memos, affected nodes, link to XRPL explorer)
 - **Peers**: Connected peer table + force-directed network graph visualization with latency-based coloring, **geolocation world map** with peer dots
 - **Transactions**: Live transaction feed with type distribution pie chart
 - **Validators & Amendments**: Validator list, amendment status with progress tracking, **UNL comparison** (overlap with vl.ripple.com)
@@ -58,7 +58,8 @@ shared/
 ## API Endpoints
 - `GET/POST /api/connection` — Connection config
 - `GET /api/node/info|ledger|peers|transactions` — XRPL node data
-- `GET /api/node/tx/:hash` — Transaction lookup
+- `GET /api/node/tx/:hash` — Transaction detail lookup (full tx data with memos, affected nodes)
+- `GET /api/node/ledger-transactions` — Expanded transactions for the current validated ledger
 - `GET /api/node/account/:address` — Account info
 - `GET /api/node/fee` — Current fee levels
 - `GET /api/node/validators|amendments` — Validator/amendment data

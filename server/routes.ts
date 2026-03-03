@@ -145,10 +145,16 @@ function extractPacketDetail(command: string, data: any): string {
     case "fee":
       return `base:${data.result?.drops?.base_fee || "?"} open:${data.result?.drops?.open_ledger_fee || "?"}`;
     case "validators":
-    case "validator_list_sites":
-      return `${data.result?.trusted_validators?.length || data.result?.validators?.length || 0} validators`;
-    case "feature":
-      return `${Object.keys(data.result || {}).length} amendments`;
+    case "validator_list_sites": {
+      const r = data.result || {};
+      const count = r.trusted_validator_keys?.length || r.trusted_validators?.length || r.validators?.length || 0;
+      return `${count} validators`;
+    }
+    case "feature": {
+      const feats = data.result?.features || data.result || {};
+      const amendCount = Object.keys(feats).filter(k => k.length >= 32).length;
+      return `${amendCount} amendments`;
+    }
     default:
       return data.result ? "OK" : data.error_message || "Unknown";
   }
@@ -373,6 +379,73 @@ export async function registerRoutes(
       }
     } catch (err: any) {
       res.json({ status: "disconnected", message: err.message || "Failed to connect", data: [] });
+    }
+  });
+
+  // === Transaction Detail ===
+  // Fetches full details for a single transaction by hash using the "tx" command
+  app.get("/api/node/tx/:hash", async (req: Request, res: Response) => {
+    try {
+      const config = await storage.getConnectionConfig();
+      const response = await sendXrplCommand(config.host, config.wsPort, {
+        command: "tx",
+        transaction: req.params.hash,
+        binary: false,
+      });
+
+      if (response.result) {
+        res.json({ status: "connected", data: response.result });
+      } else {
+        res.json({ status: "error", message: response.error_message || "Transaction not found", data: null });
+      }
+    } catch (err: any) {
+      res.json({ status: "disconnected", message: err.message, data: null });
+    }
+  });
+
+  // === Ledger Transactions ===
+  // Returns expanded transactions for the latest validated ledger (used by ledger explorer)
+  app.get("/api/node/ledger-transactions", async (_req: Request, res: Response) => {
+    try {
+      const config = await storage.getConnectionConfig();
+      const response = await sendXrplCommand(config.host, config.wsPort, {
+        command: "ledger",
+        ledger_index: "validated",
+        transactions: true,
+        expand: true,
+      });
+
+      if (response.result?.ledger) {
+        const ledger = response.result.ledger;
+        const txs: TransactionInfo[] = [];
+        if (Array.isArray(ledger.transactions)) {
+          for (const tx of ledger.transactions) {
+            const txData = tx.tx || tx;
+            const meta = tx.meta || tx.metaData || {};
+            txs.push({
+              hash: txData.hash || tx.hash || "",
+              type: txData.TransactionType || "Unknown",
+              account: txData.Account || "",
+              destination: txData.Destination || undefined,
+              amount: typeof txData.Amount === "string" ? txData.Amount : txData.Amount?.value || undefined,
+              fee: txData.Fee || "0",
+              result: meta.TransactionResult || "unknown",
+              ledgerIndex: parseInt(ledger.ledger_index || "0"),
+              date: ledger.close_time || 0,
+            });
+          }
+        }
+        res.json({
+          status: "connected",
+          data: txs,
+          ledgerIndex: parseInt(ledger.ledger_index || "0"),
+          ledgerHash: ledger.ledger_hash || "",
+        });
+      } else {
+        res.json({ status: "connected", data: [], ledgerIndex: 0, ledgerHash: "" });
+      }
+    } catch (err: any) {
+      res.json({ status: "disconnected", message: err.message, data: [] });
     }
   });
 
@@ -837,20 +910,88 @@ export async function registerRoutes(
       });
 
       if (response.result) {
-        const validators: ValidatorInfo[] = (response.result.trusted_validators || response.result.validators || []).map((v: any) => ({
-          publicKey: v.validation_public_key || v.pubkey_validator || "",
-          signingKey: v.signing_key || undefined,
-          masterKey: v.master_key || undefined,
-          domain: v.domain || undefined,
-          agreement: v.agreement || undefined,
-          partial: v.partial || false,
-          unl: v.unl !== false,
-        }));
+        const r = response.result;
+        const validatorMap = new Map<string, ValidatorInfo>();
+
+        const trustedKeys: string[] = r.trusted_validator_keys || [];
+        for (const key of trustedKeys) {
+          validatorMap.set(key, {
+            publicKey: key,
+            unl: true,
+          });
+        }
+
+        const publisherLists: any[] = r.publisher_lists || [];
+        for (const pub of publisherLists) {
+          const list = pub.list || [];
+          for (const entry of list) {
+            const key = entry.validation_public_key || entry.pubkey_validator || "";
+            if (!key) continue;
+            const existing = validatorMap.get(key);
+            validatorMap.set(key, {
+              publicKey: key,
+              signingKey: entry.signing_key || existing?.signingKey || undefined,
+              masterKey: entry.master_key || existing?.masterKey || undefined,
+              domain: entry.manifest?.domain || existing?.domain || undefined,
+              agreement: entry.agreement || existing?.agreement || undefined,
+              partial: entry.partial || existing?.partial || false,
+              unl: true,
+            });
+          }
+        }
+
+        if (Array.isArray(r.trusted_validators)) {
+          for (const v of r.trusted_validators) {
+            const key = v.validation_public_key || v.pubkey_validator || "";
+            if (!key) continue;
+            const existing = validatorMap.get(key);
+            validatorMap.set(key, {
+              publicKey: key,
+              signingKey: v.signing_key || existing?.signingKey || undefined,
+              masterKey: v.master_key || existing?.masterKey || undefined,
+              domain: v.domain || existing?.domain || undefined,
+              agreement: v.agreement || existing?.agreement || undefined,
+              partial: v.partial || existing?.partial || false,
+              unl: v.unl !== false,
+            });
+          }
+        }
+
+        if (Array.isArray(r.validators)) {
+          for (const v of r.validators) {
+            const key = v.validation_public_key || v.pubkey_validator || "";
+            if (!key) continue;
+            if (!validatorMap.has(key)) {
+              validatorMap.set(key, {
+                publicKey: key,
+                signingKey: v.signing_key || undefined,
+                masterKey: v.master_key || undefined,
+                domain: v.domain || undefined,
+                agreement: v.agreement || undefined,
+                partial: v.partial || false,
+                unl: v.unl !== false,
+              });
+            }
+          }
+        }
+
+        const signingKeys = r.signing_keys || {};
+        for (const [sigKey, masterKey] of Object.entries(signingKeys)) {
+          const key = String(masterKey);
+          const existing = validatorMap.get(key);
+          if (existing) {
+            existing.signingKey = existing.signingKey || sigKey;
+          }
+        }
+
+        const validators = Array.from(validatorMap.values());
+
         res.json({
           status: "connected",
           data: validators,
-          publisherCount: response.result.publisher_lists?.length || 0,
-          localValidator: response.result.local_static_keys || [],
+          publisherCount: publisherLists.length || 0,
+          localValidator: r.local_static_keys || [],
+          validationQuorum: r.validation_quorum || 0,
         });
       } else {
         res.json({ status: "connected", data: [] });
@@ -869,15 +1010,20 @@ export async function registerRoutes(
       });
 
       if (response.result) {
-        const amendments: AmendmentInfo[] = Object.entries(response.result).map(([id, data]: [string, any]) => ({
-          name: data.name || id.substring(0, 16) + "...",
-          id,
-          enabled: data.enabled === true,
-          supported: data.supported === true,
-          vetoed: data.vetoed === true || data.vetoed === "Obsolete",
-          count: data.count || undefined,
-          threshold: data.threshold || undefined,
-        }));
+        const featureData = response.result.features || response.result;
+        const skipKeys = new Set(["status", "error", "error_message", "request", "warnings"]);
+
+        const amendments: AmendmentInfo[] = Object.entries(featureData)
+          .filter(([id]) => !skipKeys.has(id) && id.length >= 32)
+          .map(([id, data]: [string, any]) => ({
+            name: data.name || id.substring(0, 16) + "...",
+            id,
+            enabled: data.enabled === true,
+            supported: data.supported === true,
+            vetoed: data.vetoed === true || data.vetoed === "Obsolete",
+            count: data.count || undefined,
+            threshold: data.threshold || undefined,
+          }));
         res.json({ status: "connected", data: amendments });
       } else {
         res.json({ status: "connected", data: [] });
@@ -1334,8 +1480,32 @@ export async function registerRoutes(
       try {
         const vResp = await sendXrplCommand(config.host, config.adminPort, { command: "validators" });
         if (vResp.result) {
-          const vList = vResp.result.trusted_validators || vResp.result.validators || [];
-          localValidators = vList.map((v: any) => v.validation_public_key || v.pubkey_validator || "").filter(Boolean);
+          const r = vResp.result;
+          const keys = new Set<string>();
+          if (Array.isArray(r.trusted_validator_keys)) {
+            for (const k of r.trusted_validator_keys) keys.add(k);
+          }
+          if (Array.isArray(r.publisher_lists)) {
+            for (const pub of r.publisher_lists) {
+              for (const entry of (pub.list || [])) {
+                const k = entry.validation_public_key || entry.pubkey_validator || "";
+                if (k) keys.add(k);
+              }
+            }
+          }
+          if (Array.isArray(r.trusted_validators)) {
+            for (const v of r.trusted_validators) {
+              const k = v.validation_public_key || v.pubkey_validator || "";
+              if (k) keys.add(k);
+            }
+          }
+          if (Array.isArray(r.validators)) {
+            for (const v of r.validators) {
+              const k = v.validation_public_key || v.pubkey_validator || "";
+              if (k) keys.add(k);
+            }
+          }
+          localValidators = Array.from(keys);
         }
       } catch {}
 
