@@ -292,8 +292,8 @@ export function AppSidebar() {
             <span className="text-[9px] font-mono text-muted-foreground">
               Validator & RIP973.COM
             </span>
-            <span className="text-[9px] font-mono text-muted-foreground truncate" title="rNTfyfJaYFbcqSwTKxNwTC322zFziC5LiE">
-              rNTfyfJaYFbc...C5LiE
+            <span className="text-[8px] font-mono text-muted-foreground break-all leading-tight">
+              rNTfyfJaYFbcqSwTKxNwTC322zFziC5LiE
             </span>
           </div>
         </a>
