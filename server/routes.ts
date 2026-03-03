@@ -12,9 +12,12 @@ import { log } from "./index";
 
 // --- XRPL WebSocket helpers ---
 
-// Constructs a WebSocket URL from host and port
-function getWsUrl(host: string, port: number): string {
-  return `ws://${host}:${port}`;
+function getWsUrl(host: string, port: number, secure = false): string {
+  return `${secure ? "wss" : "ws"}://${host}:${port}`;
+}
+
+function getValidatedLedger(info: any) {
+  return info.validated_ledger || info.closed_ledger || null;
 }
 
 // Sends a single XRPL command via WebSocket with automatic port fallback.
@@ -41,10 +44,10 @@ async function sendXrplCommand(host: string, port: number, command: Record<strin
 // Opens a one-shot WebSocket connection, sends the command, waits for a single
 // response, then closes. Has a 5s handshake timeout and 10s overall timeout
 // to avoid hanging on unreachable nodes.
-function sendXrplCommandToPort(host: string, port: number, command: Record<string, unknown>): Promise<any> {
+function sendXrplCommandToPort(host: string, port: number, command: Record<string, unknown>, secure = false): Promise<any> {
   return new Promise((resolve, reject) => {
-    const url = getWsUrl(host, port);
-    const ws = new WebSocket(url, { handshakeTimeout: 5000 });
+    const url = getWsUrl(host, port, secure);
+    const ws = new WebSocket(url, { handshakeTimeout: 5000, rejectUnauthorized: false });
     const timeout = setTimeout(() => {
       ws.close();
       reject(new Error(`Connection to ${url} timed out`));
@@ -131,14 +134,17 @@ export async function registerRoutes(
           stateAccounting: info.state_accounting || {},
           time: info.time || "",
           uptime: info.uptime || 0,
-          validatedLedger: {
-            age: info.validated_ledger?.age || 0,
-            baseFee: info.validated_ledger?.base_fee_xrp || 0,
-            hash: info.validated_ledger?.hash || "",
-            reserveBase: info.validated_ledger?.reserve_base_xrp || 0,
-            reserveInc: info.validated_ledger?.reserve_inc_xrp || 0,
-            seq: info.validated_ledger?.seq || 0,
-          },
+          validatedLedger: (() => {
+            const vl = getValidatedLedger(info);
+            return {
+              age: vl?.age || 0,
+              baseFee: vl?.base_fee_xrp || 0,
+              hash: vl?.hash || "",
+              reserveBase: vl?.reserve_base_xrp || 0,
+              reserveInc: vl?.reserve_inc_xrp || 0,
+              seq: vl?.seq || 0,
+            };
+          })(),
           validationQuorum: info.validation_quorum || 0,
         };
         res.json({ status: "connected", data: nodeInfo });
@@ -156,15 +162,38 @@ export async function registerRoutes(
   app.get("/api/node/ledger", async (_req, res) => {
     try {
       const config = await storage.getConnectionConfig();
-      const response = await sendXrplCommand(config.host, config.wsPort, {
-        command: "ledger",
-        ledger_index: "validated",
-        transactions: true,
-        expand: false,
-      });
 
-      if (response.result && response.result.ledger) {
-        const ledger = response.result.ledger;
+      let ledger: any = null;
+      for (const idx of ["validated", "closed", "current"]) {
+        try {
+          const response = await sendXrplCommand(config.host, config.wsPort, {
+            command: "ledger",
+            ledger_index: idx,
+            transactions: true,
+            expand: false,
+          });
+          if (response.result?.ledger) {
+            ledger = response.result.ledger;
+            break;
+          }
+          if (response.result?.ledger_current_index && idx === "current") {
+            ledger = { ledger_index: String(response.result.ledger_current_index), close_time_human: "Current" };
+            break;
+          }
+        } catch {}
+      }
+
+      if (!ledger) {
+        try {
+          const infoResp = await sendXrplCommand(config.host, config.wsPort, { command: "server_info" });
+          const vl = getValidatedLedger(infoResp.result?.info);
+          if (vl) {
+            ledger = { ledger_index: String(vl.seq), hash: vl.hash, close_time_human: `Age: ${vl.age}s` };
+          }
+        } catch {}
+      }
+
+      if (ledger) {
         const ledgerInfo: LedgerInfo = {
           ledgerIndex: parseInt(ledger.ledger_index || ledger.seqNum || "0"),
           ledgerHash: ledger.ledger_hash || ledger.hash || "",
@@ -178,7 +207,7 @@ export async function registerRoutes(
         };
         res.json({ status: "connected", data: ledgerInfo });
       } else {
-        res.json({ status: "error", message: "Unexpected response format", data: null });
+        res.json({ status: "error", message: "No ledger data available", data: null });
       }
     } catch (err: any) {
       res.json({ status: "disconnected", message: err.message || "Failed to connect", data: null });
@@ -389,16 +418,17 @@ export async function registerRoutes(
 
         if (response.result?.info) {
           const info = response.result.info;
+          const vl = getValidatedLedger(info);
           nodeData = {
             peerCount: info.peers || 0,
-            ledgerIndex: info.validated_ledger?.seq || 0,
+            ledgerIndex: vl?.seq || 0,
             closeTimeMs: (info.last_close?.converge_time_s || 0) * 1000,
             loadFactor: info.load_factor || 1,
             serverState: info.server_state || "unknown",
             nodeLatencyMs: latencyMs,
-            reserveBase: info.validated_ledger?.reserve_base_xrp || 0,
-            reserveInc: info.validated_ledger?.reserve_inc_xrp || 0,
-            baseFee: info.validated_ledger?.base_fee_xrp || 0,
+            reserveBase: vl?.reserve_base_xrp || 0,
+            reserveInc: vl?.reserve_inc_xrp || 0,
+            baseFee: vl?.base_fee_xrp || 0,
           };
         }
       } catch {}
@@ -412,11 +442,18 @@ export async function registerRoutes(
         if (elapsedSec > 0) {
           try {
             const config2 = await storage.getConnectionConfig();
-            const ledgerResp = await sendXrplCommand(config2.host, config2.wsPort, {
-              command: "ledger", ledger_index: "validated", transactions: true, expand: false,
-            });
-            const txCount = Array.isArray(ledgerResp.result?.ledger?.transactions)
-              ? ledgerResp.result.ledger.transactions.length : 0;
+            let txCount = 0;
+            for (const idx of ["validated", "closed", "current"]) {
+              try {
+                const ledgerResp = await sendXrplCommand(config2.host, config2.wsPort, {
+                  command: "ledger", ledger_index: idx, transactions: true, expand: false,
+                });
+                if (Array.isArray(ledgerResp.result?.ledger?.transactions)) {
+                  txCount = ledgerResp.result.ledger.transactions.length;
+                  break;
+                }
+              } catch {}
+            }
             tps = Math.round((txCount / Math.max(elapsedSec, 1)) * 100) / 100;
           } catch {}
         }
@@ -837,7 +874,7 @@ export async function registerRoutes(
           status: "connected",
           serverState: response.result.info.server_state,
           peers: response.result.info.peers,
-          ledgerSeq: response.result.info.validated_ledger?.seq,
+          ledgerSeq: getValidatedLedger(response.result.info)?.seq,
         });
       } else {
         res.json({ status: "error" });
@@ -922,15 +959,21 @@ export async function registerRoutes(
           const nodeResp = await sendXrplCommand(connConfig.host, connConfig.wsPort, { command: "server_info" });
           if (nodeResp.result?.info) {
             const i = nodeResp.result.info;
-            contextData += `\n[Node Status] State: ${i.server_state}, Uptime: ${i.uptime}s, Peers: ${i.peers}, Build: ${i.build_version}, Load Factor: ${i.load_factor}, Ledger: ${i.validated_ledger?.seq}, Quorum: ${i.validation_quorum}`;
+            contextData += `\n[Node Status] State: ${i.server_state}, Uptime: ${i.uptime}s, Peers: ${i.peers}, Build: ${i.build_version}, Load Factor: ${i.load_factor}, Ledger: ${getValidatedLedger(i)?.seq}, Quorum: ${i.validation_quorum}`;
           }
         } catch {}
       }
       if (context === "ledger" || context === "general") {
         try {
-          const ledgerResp = await sendXrplCommand(connConfig.host, connConfig.wsPort, { command: "ledger", ledger_index: "validated" });
-          if (ledgerResp.result?.ledger) {
-            const l = ledgerResp.result.ledger;
+          let ledgerResult: any = null;
+          for (const idx of ["validated", "closed"]) {
+            try {
+              const lr = await sendXrplCommand(connConfig.host, connConfig.wsPort, { command: "ledger", ledger_index: idx });
+              if (lr.result?.ledger) { ledgerResult = lr; break; }
+            } catch {}
+          }
+          if (ledgerResult?.result?.ledger) {
+            const l = ledgerResult.result.ledger;
             contextData += `\n[Latest Ledger] Index: ${l.ledger_index}, Hash: ${l.ledger_hash}, Close Time: ${l.close_time_human}, Txns: ${l.transactions?.length || 0}`;
           }
         } catch {}
@@ -1125,8 +1168,8 @@ export async function registerRoutes(
           components.peers = { score: Math.round(peerScore), max: 20, detail: `${peers} peers` };
           score += peerScore;
 
-          // Ledger age: fresher ledgers score higher (<=10s = perfect)
-          const ledgerAge = info.validated_ledger?.age || 999;
+          const vl = getValidatedLedger(info);
+          const ledgerAge = vl?.age || 999;
           const ageScore = ledgerAge <= 10 ? 20 : ledgerAge <= 30 ? 15 : ledgerAge <= 60 ? 8 : 0;
           components.ledgerAge = { score: ageScore, max: 20, detail: `${ledgerAge}s ago` };
           score += ageScore;
@@ -1166,11 +1209,15 @@ export async function registerRoutes(
       const config = await storage.getConnectionConfig();
       const [localResp, publicResp] = await Promise.allSettled([
         sendXrplCommand(config.host, config.wsPort, { command: "server_info" }),
-        sendXrplCommandToPort("s2.ripple.com", 51233, { command: "server_info" }),
+        sendXrplCommandToPort("s2.ripple.com", 51233, { command: "server_info" }, true),
       ]);
 
-      const localSeq = localResp.status === "fulfilled" ? localResp.value.result?.info?.validated_ledger?.seq || 0 : 0;
-      const publicSeq = publicResp.status === "fulfilled" ? publicResp.value.result?.info?.validated_ledger?.seq || 0 : 0;
+      const localInfo = localResp.status === "fulfilled" ? localResp.value.result?.info : null;
+      const publicInfo = publicResp.status === "fulfilled" ? publicResp.value.result?.info : null;
+      const localVl = localInfo ? getValidatedLedger(localInfo) : null;
+      const publicVl = publicInfo ? getValidatedLedger(publicInfo) : null;
+      const localSeq = localVl?.seq || 0;
+      const publicSeq = publicVl?.seq || 0;
       const lag = publicSeq > 0 && localSeq > 0 ? publicSeq - localSeq : null;
 
       res.json({ localLedger: localSeq, publicLedger: publicSeq, lag, synced: lag !== null && Math.abs(lag) <= 3 });
@@ -1362,8 +1409,8 @@ export async function registerRoutes(
               latency,
               serverState: info.server_state,
               peers: info.peers,
-              ledgerSeq: info.validated_ledger?.seq,
-              ledgerAge: info.validated_ledger?.age,
+              ledgerSeq: getValidatedLedger(info)?.seq,
+              ledgerAge: getValidatedLedger(info)?.age,
               uptime: info.uptime,
               buildVersion: info.build_version,
               loadFactor: info.load_factor,

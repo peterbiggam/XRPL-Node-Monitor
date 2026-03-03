@@ -707,7 +707,7 @@ export default function DashboardPage() {
               <MetricCard
                 icon={Layers}
                 label="Ledger Lag"
-                value={lagData ? `${lagData.lag}` : "--"}
+                value={lagData ? (lagData.lag !== null ? `${lagData.lag}` : "N/A") : "--"}
                 subValue={lagData ? (lagData.synced ? "Fully Synced" : "Out of Sync") : "Awaiting data"}
                 testId="card-ledger-lag"
               >
