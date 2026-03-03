@@ -12,6 +12,38 @@ import { log } from "./index";
 
 // --- XRPL WebSocket helpers ---
 
+interface FetchPacket {
+  id: number;
+  timestamp: number;
+  command: string;
+  host: string;
+  port: number;
+  status: "success" | "error";
+  latencyMs: number;
+  responseSize: number;
+  detail: string;
+}
+
+const MAX_PACKETS = 100;
+const fetchPackets: FetchPacket[] = [];
+let packetIdCounter = 0;
+
+function recordPacket(command: string, host: string, port: number, status: "success" | "error", latencyMs: number, responseSize: number, detail: string) {
+  const packet: FetchPacket = {
+    id: ++packetIdCounter,
+    timestamp: Date.now(),
+    command,
+    host,
+    port,
+    status,
+    latencyMs,
+    responseSize,
+    detail,
+  };
+  fetchPackets.unshift(packet);
+  if (fetchPackets.length > MAX_PACKETS) fetchPackets.length = MAX_PACKETS;
+}
+
 function getWsUrl(host: string, port: number, secure = false): string {
   return `${secure ? "wss" : "ws"}://${host}:${port}`;
 }
@@ -45,12 +77,16 @@ async function sendXrplCommand(host: string, port: number, command: Record<strin
 // response, then closes. Has a 5s handshake timeout and 10s overall timeout
 // to avoid hanging on unreachable nodes.
 function sendXrplCommandToPort(host: string, port: number, command: Record<string, unknown>, secure = false): Promise<any> {
+  const cmdName = String(command.command || "unknown");
+  const startTime = Date.now();
   return new Promise((resolve, reject) => {
     const url = getWsUrl(host, port, secure);
     const ws = new WebSocket(url, { handshakeTimeout: 5000, rejectUnauthorized: false });
     const timeout = setTimeout(() => {
       ws.close();
-      reject(new Error(`Connection to ${url} timed out`));
+      const err = new Error(`Connection to ${url} timed out`);
+      recordPacket(cmdName, host, port, "error", Date.now() - startTime, 0, "Timeout");
+      reject(err);
     }, 10000);
 
     ws.on("open", () => {
@@ -59,11 +95,16 @@ function sendXrplCommandToPort(host: string, port: number, command: Record<strin
 
     ws.on("message", (data: WebSocket.Data) => {
       clearTimeout(timeout);
+      const raw = data.toString();
+      const latency = Date.now() - startTime;
       try {
-        const parsed = JSON.parse(data.toString());
+        const parsed = JSON.parse(raw);
+        const detail = extractPacketDetail(cmdName, parsed);
+        recordPacket(cmdName, host, port, "success", latency, raw.length, detail);
         ws.close();
         resolve(parsed);
       } catch {
+        recordPacket(cmdName, host, port, "error", latency, raw.length, "Parse error");
         ws.close();
         reject(new Error("Failed to parse XRPL response"));
       }
@@ -71,9 +112,46 @@ function sendXrplCommandToPort(host: string, port: number, command: Record<strin
 
     ws.on("error", (err: Error) => {
       clearTimeout(timeout);
+      recordPacket(cmdName, host, port, "error", Date.now() - startTime, 0, err.message || "Connection failed");
       reject(err);
     });
   });
+}
+
+function extractPacketDetail(command: string, data: any): string {
+  const info = data.result?.info;
+  const ledger = data.result?.ledger;
+  switch (command) {
+    case "server_info": {
+      if (!info) return "No info";
+      const vl = getValidatedLedger(info);
+      const parts: string[] = [];
+      if (info.server_state) parts.push(info.server_state);
+      if (info.peers != null) parts.push(`peers:${info.peers}`);
+      if (vl?.seq) parts.push(`ledger:${vl.seq}`);
+      return parts.length > 0 ? parts.join(" | ") : "OK";
+    }
+    case "ledger":
+      if (!ledger) return "No ledger data";
+      return `#${ledger.ledger_index || "?"} | ${Array.isArray(ledger.transactions) ? ledger.transactions.length : 0} txns`;
+    case "peers":
+      return `${data.result?.peers?.length || 0} peers`;
+    case "server_state":
+      return info?.server_state || "unknown";
+    case "tx":
+      return data.result?.hash ? `tx:${data.result.hash.slice(0, 12)}…` : "tx lookup";
+    case "account_info":
+      return data.result?.account_data?.Account?.slice(0, 16) + "…" || "account";
+    case "fee":
+      return `base:${data.result?.drops?.base_fee || "?"} open:${data.result?.drops?.open_ledger_fee || "?"}`;
+    case "validators":
+    case "validator_list_sites":
+      return `${data.result?.trusted_validators?.length || data.result?.validators?.length || 0} validators`;
+    case "feature":
+      return `${Object.keys(data.result || {}).length} amendments`;
+    default:
+      return data.result ? "OK" : data.error_message || "Unknown";
+  }
 }
 
 // --- Route Registration ---
@@ -82,6 +160,15 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // === Live Fetch Packets ===
+  app.get("/api/node/packets", (_req, res) => {
+    const since = parseInt(String(_req.query.since) || "0", 10);
+    const packets = since > 0
+      ? fetchPackets.filter(p => p.id > since)
+      : fetchPackets.slice(0, 50);
+    res.json(packets);
+  });
 
   // === Connection Config ===
   // GET/POST the XRPL node connection target (host + ports)

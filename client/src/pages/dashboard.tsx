@@ -30,6 +30,8 @@ import {
   Activity,
   Layers,
   ShieldCheck,
+  Radio,
+  ArrowDownUp,
 } from "lucide-react";
 import { useState, useRef, useCallback, useEffect, useId, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -71,6 +73,18 @@ interface LedgerLagResponse {
   publicLedger: number;
   lag: number;
   synced: boolean;
+}
+
+interface FetchPacket {
+  id: number;
+  timestamp: number;
+  command: string;
+  host: string;
+  port: number;
+  status: "success" | "error";
+  latencyMs: number;
+  responseSize: number;
+  detail: string;
 }
 
 // --- Utility helpers ---
@@ -416,29 +430,137 @@ function DisconnectedBanner({ message }: { message?: string }) {
 }
 
 /** Displays a rolling list of the most recent ledger hashes (newest first). */
-function DataStreamSection({ hashes }: { hashes: string[] }) {
-  if (hashes.length === 0) return null;
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / 1048576).toFixed(1)}MB`;
+}
+
+function formatTimestamp(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function LivePacketFeed() {
+  const lastIdRef = useRef(0);
+  const allPacketsRef = useRef<FetchPacket[]>([]);
+
+  const { data: newPackets } = useQuery<FetchPacket[]>({
+    queryKey: ["/api/node/packets", lastIdRef.current],
+    queryFn: async () => {
+      const res = await fetch(`/api/node/packets?since=${lastIdRef.current}`);
+      if (!res.ok) throw new Error("Failed to fetch packets");
+      return res.json();
+    },
+    refetchInterval: 2000,
+  });
+
+  if (newPackets && newPackets.length > 0) {
+    const maxId = Math.max(...newPackets.map(p => p.id));
+    if (maxId > lastIdRef.current) {
+      lastIdRef.current = maxId;
+      const merged = [...newPackets, ...allPacketsRef.current];
+      const seen = new Set<number>();
+      allPacketsRef.current = merged.filter(p => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      }).sort((a, b) => b.id - a.id).slice(0, 50);
+    }
+  }
+
+  const displayPackets = allPacketsRef.current.slice(0, 25);
+
+  if (displayPackets.length === 0) {
+    return (
+      <motion.div variants={itemVariants} data-testid="section-live-packets">
+        <Card className="cyber-border overflow-visible">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Radio className="w-4 h-4 text-primary animate-pulse" />
+              <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                LIVE FETCH PACKETS
+              </p>
+            </div>
+            <p className="text-xs font-mono text-muted-foreground">Waiting for data...</p>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  }
+
+  const successCount = displayPackets.filter(p => p.status === "success").length;
+  const errorCount = displayPackets.filter(p => p.status === "error").length;
+  const avgLatency = displayPackets.length > 0
+    ? Math.round(displayPackets.reduce((s, p) => s + p.latencyMs, 0) / displayPackets.length)
+    : 0;
 
   return (
-    <motion.div variants={itemVariants} data-testid="section-data-stream">
+    <motion.div variants={itemVariants} data-testid="section-live-packets">
       <Card className="cyber-border overflow-visible">
         <CardContent className="p-4">
-          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-3">
-            DATA STREAM
-          </p>
-          <div className="space-y-1">
-            {hashes.map((hash, i) => (
-              <div
-                key={`${hash}-${i}`}
-                className="flex items-center gap-2 font-mono text-xs"
-                style={{ opacity: 1 - i * 0.15 }}
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse-glow flex-shrink-0" />
-                <span className="text-primary/80 truncate" data-testid={`text-hash-${i}`}>
-                  {hash}
-                </span>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Radio className="w-4 h-4 text-primary animate-pulse" />
+              <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                LIVE FETCH PACKETS
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-[10px] font-mono">
+              <span className="text-green-400" data-testid="text-packet-success">{successCount} OK</span>
+              {errorCount > 0 && <span className="text-red-400" data-testid="text-packet-errors">{errorCount} ERR</span>}
+              <span className="text-muted-foreground" data-testid="text-packet-avg-latency">~{avgLatency}ms</span>
+            </div>
+          </div>
+
+          <div className="space-y-0.5 max-h-[400px] overflow-y-auto scrollbar-thin">
+            <AnimatePresence mode="popLayout">
+              {displayPackets.map((pkt) => (
+                <motion.div
+                  key={pkt.id}
+                  initial={{ opacity: 0, x: -20, height: 0 }}
+                  animate={{ opacity: 1, x: 0, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex items-center gap-2 font-mono text-[11px] py-1 px-2 rounded hover:bg-primary/5 group"
+                  data-testid={`packet-row-${pkt.id}`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${
+                    pkt.status === "success" ? "bg-green-400" : "bg-red-400"
+                  } ${pkt.status === "success" ? "animate-pulse-glow" : ""}`} />
+
+                  <span className="text-muted-foreground w-[60px] flex-shrink-0">
+                    {formatTimestamp(pkt.timestamp)}
+                  </span>
+
+                  <span className={`font-bold w-[100px] flex-shrink-0 uppercase ${
+                    pkt.status === "success" ? "text-primary" : "text-red-400"
+                  }`}>
+                    {pkt.command}
+                  </span>
+
+                  <ArrowDownUp className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+
+                  <span className="text-muted-foreground flex-shrink-0 truncate max-w-[120px]" title={`${pkt.host}:${pkt.port}`}>
+                    {pkt.host === "localhost" || pkt.host === "127.0.0.1" ? `:${pkt.port}` : `${pkt.host.split(".")[0]}:${pkt.port}`}
+                  </span>
+
+                  <span className={`w-[45px] flex-shrink-0 text-right ${
+                    pkt.latencyMs < 100 ? "text-green-400" : pkt.latencyMs < 500 ? "text-yellow-400" : "text-red-400"
+                  }`}>
+                    {pkt.latencyMs}ms
+                  </span>
+
+                  <span className="text-muted-foreground w-[50px] flex-shrink-0 text-right">
+                    {formatBytes(pkt.responseSize)}
+                  </span>
+
+                  <span className="text-primary/60 truncate flex-1 ml-2 group-hover:text-primary/90">
+                    {pkt.detail}
+                  </span>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         </CardContent>
       </Card>
@@ -758,7 +880,7 @@ export default function DashboardPage() {
             </motion.div>
           </motion.div>
 
-          <DataStreamSection hashes={ledgerHashes} />
+          <LivePacketFeed />
         </motion.div>
       </AnimatePresence>
     </div>
