@@ -18,10 +18,23 @@
 
 type SoundType = "alertWarning" | "alertCritical" | "newLedger" | "connectionLost" | "connectionRestored";
 
-/** Lazy-initialized singleton AudioContext shared by all sound functions. */
 let audioContext: AudioContext | null = null;
+let userHasInteracted = false;
 
-function getAudioContext(): AudioContext {
+if (typeof window !== "undefined") {
+  const markInteracted = () => {
+    userHasInteracted = true;
+    window.removeEventListener("click", markInteracted);
+    window.removeEventListener("keydown", markInteracted);
+    window.removeEventListener("touchstart", markInteracted);
+  };
+  window.addEventListener("click", markInteracted);
+  window.addEventListener("keydown", markInteracted);
+  window.addEventListener("touchstart", markInteracted);
+}
+
+function getAudioContext(): AudioContext | null {
+  if (!userHasInteracted) return null;
   if (!audioContext) {
     audioContext = new AudioContext();
   }
@@ -36,9 +49,9 @@ function setSoundEnabled(enabled: boolean): void {
   localStorage.setItem("xrpl-sound-enabled", enabled ? "true" : "false");
 }
 
-/** Rising sine sweep — used for non-critical alert notifications. */
 function playAlertWarning(): void {
   const ctx = getAudioContext();
+  if (!ctx) return;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
@@ -52,9 +65,9 @@ function playAlertWarning(): void {
   osc.stop(ctx.currentTime + 0.25);
 }
 
-/** Two rapid square-wave bursts — urgent/critical alert sound. */
 function playAlertCritical(): void {
   const ctx = getAudioContext();
+  if (!ctx) return;
   for (let i = 0; i < 2; i++) {
     const offset = i * 0.18;
     const osc = ctx.createOscillator();
@@ -71,9 +84,9 @@ function playAlertCritical(): void {
   }
 }
 
-/** Short high-pitched chirp — played when a new ledger is validated. */
 function playNewLedger(): void {
   const ctx = getAudioContext();
+  if (!ctx) return;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
@@ -87,9 +100,9 @@ function playNewLedger(): void {
   osc.stop(ctx.currentTime + 0.15);
 }
 
-/** Descending tone — signals loss of WebSocket/node connection. */
 function playConnectionLost(): void {
   const ctx = getAudioContext();
+  if (!ctx) return;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
@@ -103,9 +116,9 @@ function playConnectionLost(): void {
   osc.stop(ctx.currentTime + 0.5);
 }
 
-/** Ascending C-E-G arpeggio — positive feedback when connection is restored. */
 function playConnectionRestored(): void {
   const ctx = getAudioContext();
+  if (!ctx) return;
   const notes = [523, 659, 784];
   notes.forEach((freq, i) => {
     const offset = i * 0.12;
@@ -130,11 +143,11 @@ const soundMap: Record<SoundType, () => void> = {
   connectionRestored: playConnectionRestored,
 };
 
-/** Entry point: plays the named sound if sounds are enabled and AudioContext is ready. */
 function playSound(type: SoundType): void {
-  if (!isSoundEnabled()) return;
+  if (!isSoundEnabled() || !userHasInteracted) return;
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     if (ctx.state === "suspended") {
       ctx.resume().then(() => soundMap[type]());
     } else {

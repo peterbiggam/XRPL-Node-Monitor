@@ -362,7 +362,7 @@ function AppContent() {
               </div>
             </header>
             <div className="neon-line" />
-            <main className="flex-1 overflow-auto grid-bg">
+            <main className="flex-1 overflow-y-scroll grid-bg" style={{ scrollbarGutter: "stable" }}>
               <Router />
             </main>
           </div>

@@ -209,6 +209,21 @@
   background: linear-gradient(90deg, transparent, rgba(0, 230, 255, 0.5), transparent);
 }
 
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 230, 255, 0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 230, 255, 0.3);
+}
+
 @keyframes data-flow {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
