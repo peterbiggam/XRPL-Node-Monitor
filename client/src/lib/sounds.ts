@@ -42,11 +42,19 @@ function getAudioContext(): AudioContext | null {
 }
 
 function isSoundEnabled(): boolean {
-  return localStorage.getItem("xrpl-sound-enabled") !== "false";
+  try {
+    return localStorage.getItem("xrpl-sound-enabled") !== "false";
+  } catch {
+    return true;
+  }
 }
 
 function setSoundEnabled(enabled: boolean): void {
-  localStorage.setItem("xrpl-sound-enabled", enabled ? "true" : "false");
+  try {
+    localStorage.setItem("xrpl-sound-enabled", enabled ? "true" : "false");
+  } catch {
+    // silently ignore in sandboxed environments
+  }
 }
 
 function playAlertWarning(): void {
